@@ -1,5 +1,5 @@
 -- ============================================================================
--- RFP Radar Database Schema
+-- RFP Radar Database Schema (with pgvector support)
 -- ============================================================================
 -- このスキーマは、会社情報とスキルに基づいて官公需の入札案件をマッチングする
 -- RFP Radarシステムのデータベース構造を定義します。
@@ -7,7 +7,13 @@
 -- 要件:
 -- - PostgreSQL 14+
 -- - Supabase (auth.users テーブルが存在)
+-- - pgvector拡張（セマンティック検索用）
 -- - Row Level Security (RLS) による細かいアクセス制御
+--
+-- ベクトル検索:
+-- - OpenAI text-embedding-3-small (1536次元) を使用
+-- - RFP案件と会社スキルの埋め込みベクトルでハイブリッドマッチング
+-- - IVFFlat インデックスによる高速近似検索
 -- ============================================================================
 
 -- ============================================================================
@@ -16,6 +22,9 @@
 
 -- UUID生成機能を有効化
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- pgvector拡張を有効化（ベクトル類似検索用）
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ============================================================================
 -- 1. companies (会社プロフィール)
@@ -177,6 +186,7 @@ CREATE TABLE IF NOT EXISTS rfps (
     deadline DATE NOT NULL,
     url TEXT,
     external_doc_urls TEXT[] DEFAULT '{}',
+    embedding vector(1536),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     fetched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -191,6 +201,8 @@ CREATE INDEX idx_rfps_region ON rfps(region);
 CREATE INDEX idx_rfps_deadline ON rfps(deadline);
 CREATE INDEX idx_rfps_fetched_at ON rfps(fetched_at DESC);
 CREATE INDEX idx_rfps_budget ON rfps(budget) WHERE budget IS NOT NULL;
+-- ベクトル類似検索用インデックス（IVFFlat: 高速近似検索）
+CREATE INDEX idx_rfps_embedding ON rfps USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- RLS有効化
 ALTER TABLE rfps ENABLE ROW LEVEL SECURITY;
@@ -232,6 +244,7 @@ COMMENT ON COLUMN rfps.budget IS '案件予算（円）、不明の場合はNULL
 COMMENT ON COLUMN rfps.region IS '都道府県コード';
 COMMENT ON COLUMN rfps.deadline IS '応募締切日';
 COMMENT ON COLUMN rfps.external_doc_urls IS '外部資料URLの配列';
+COMMENT ON COLUMN rfps.embedding IS 'OpenAI text-embedding-3-small由来の1536次元埋め込みベクトル（セマンティック検索用）';
 COMMENT ON COLUMN rfps.fetched_at IS '案件情報を取得した日時';
 
 -- ============================================================================
@@ -343,6 +356,50 @@ COMMENT ON COLUMN match_snapshots.factors IS 'スコア寄与度の詳細 {skill
 COMMENT ON COLUMN match_snapshots.summary_points IS 'マッチング結果の要約（3点程度）';
 
 -- ============================================================================
+-- 6. company_skill_embeddings (会社スキル埋め込みベクトル)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS company_skill_embeddings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    skill_text TEXT NOT NULL,
+    embedding vector(1536) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- インデックス
+CREATE INDEX idx_company_skill_embeddings_company_id ON company_skill_embeddings(company_id);
+-- ベクトル類似検索用インデックス（IVFFlat: 高速近似検索）
+CREATE INDEX idx_company_skill_embeddings_embedding ON company_skill_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- RLS有効化
+ALTER TABLE company_skill_embeddings ENABLE ROW LEVEL SECURITY;
+
+-- RLSポリシー: SELECT - 同一会社のユーザーのみ参照可能
+CREATE POLICY "Users can view their company skill embeddings"
+    ON company_skill_embeddings
+    FOR SELECT
+    USING (
+        company_id IN (
+            SELECT id FROM companies WHERE user_id = auth.uid()
+        )
+    );
+
+-- RLSポリシー: INSERT/UPDATE/DELETE - Service Roleのみ可能（埋め込み生成はバックエンドで実行）
+CREATE POLICY "Only service role can manage skill embeddings"
+    ON company_skill_embeddings
+    FOR ALL
+    TO service_role
+    USING (true)
+    WITH CHECK (true);
+
+-- コメント
+COMMENT ON TABLE company_skill_embeddings IS '会社スキルのベクトル埋め込みを管理するテーブル（セマンティック検索用）';
+COMMENT ON COLUMN company_skill_embeddings.skill_text IS 'スキル説明文（companiesテーブルのskills配列とdescriptionから生成）';
+COMMENT ON COLUMN company_skill_embeddings.embedding IS 'OpenAI text-embedding-3-small由来の1536次元埋め込みベクトル';
+
+-- ============================================================================
 -- updated_at自動更新用トリガー関数
 -- ============================================================================
 
@@ -369,6 +426,12 @@ CREATE TRIGGER update_company_documents_updated_at
 -- rfpsテーブルにトリガー適用
 CREATE TRIGGER update_rfps_updated_at
     BEFORE UPDATE ON rfps
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- company_skill_embeddingsテーブルにトリガー適用
+CREATE TRIGGER update_company_skill_embeddings_updated_at
+    BEFORE UPDATE ON company_skill_embeddings
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -424,14 +487,16 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 
 INSERT INTO schema_version (version, description)
-VALUES (1, 'Initial schema: companies, documents, rfps, bookmarks, match_snapshots')
+VALUES (1, 'Initial schema with pgvector: companies, documents, rfps, bookmarks, match_snapshots, company_skill_embeddings')
 ON CONFLICT (version) DO NOTHING;
 
 -- 完了メッセージ
 DO $$
 BEGIN
     RAISE NOTICE 'RFP Radar database schema initialized successfully';
-    RAISE NOTICE 'Tables created: companies, company_documents, rfps, bookmarks, match_snapshots';
+    RAISE NOTICE 'Tables created: companies, company_documents, rfps, bookmarks, match_snapshots, company_skill_embeddings';
+    RAISE NOTICE 'pgvector extension enabled for semantic search';
+    RAISE NOTICE 'Vector indexes created on rfps.embedding and company_skill_embeddings.embedding';
     RAISE NOTICE 'RLS policies applied to all tables';
     RAISE NOTICE 'Storage bucket setup required: company-documents (see comments in SQL file)';
 END $$;
