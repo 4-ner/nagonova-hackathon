@@ -12,7 +12,9 @@
       "Bash(python -c:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(gh pr create:*)"
+      "Bash(gh pr create:*)",
+      "Bash(pnpx shadcn@latest add:*)",
+      "Bash(pnpm build:*)"
     ],
     "deny": [],
     "ask": []
