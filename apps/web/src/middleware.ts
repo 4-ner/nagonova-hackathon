@@ -19,8 +19,14 @@ export async function middleware(request: NextRequest) {
   // 公開ルート（認証不要）
   const isPublicRoute = pathname === '/login';
 
+  // 保護されたルート（認証必須）
+  const isProtectedRoute =
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/dashboard') ||
+    pathname === '/';
+
   // 未認証ユーザーが保護されたルートにアクセスした場合、/loginにリダイレクト
-  if (!session && !isPublicRoute) {
+  if (!session && !isPublicRoute && isProtectedRoute) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/login';
     // リダイレクト元のURLを保存して、ログイン後に戻れるようにする

@@ -112,18 +112,23 @@ async def health_check():
 
 
 # ========================================
+# ルーター登録
+# ========================================
+
+from routers import companies
+
+app.include_router(companies.router, prefix="/api", tags=["companies"])
+
+# ========================================
 # 将来の機能拡張用ルーター
 # ========================================
 
 # TODO: 以下のルーターを追加予定
-# - /api/v1/companies - 会社情報管理
 # - /api/v1/skills - スキル管理
 # - /api/v1/rfps - RFP案件管理
 # - /api/v1/matching - マッチング機能
 # - /api/v1/auth - 認証・認可
 
-# from routers import companies, skills, rfps, matching, auth
-# app.include_router(companies.router, prefix="/api/v1/companies", tags=["companies"])
 # app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"])
 # app.include_router(rfps.router, prefix="/api/v1/rfps", tags=["rfps"])
 # app.include_router(matching.router, prefix="/api/v1/matching", tags=["matching"])

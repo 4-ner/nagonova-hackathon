@@ -3,12 +3,8 @@
 
 Pydantic Settingsを使用して環境変数を型安全に管理します。
 """
-from pathlib import Path
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# プロジェクトルートディレクトリを取得（apps/api から2階層上）
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-ENV_FILE = BASE_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -24,11 +20,19 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
-    # CORS設定
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # CORS設定（文字列またはリストを受け入れる）
+    cors_origins: str | list[str] = "http://localhost:3000"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """カンマ区切り文字列をリストに変換"""
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",")]
+        return v
 
     model_config = SettingsConfigDict(
-        env_file=str(ENV_FILE),
+        env_file=".env",  # カレントディレクトリ（apps/api）の.envを読む
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
