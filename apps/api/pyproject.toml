@@ -1,0 +1,7 @@
+[project]
+name = "RFP Radar Api"
+version = "0.1.0"
+description = "入札情報提案サービスAPI"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []

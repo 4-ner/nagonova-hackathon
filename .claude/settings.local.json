@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uvx fastapi:*)",
+      "mcp__notionApi__API-post-search"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "disabledMcpjsonServers": [
+    "notionApi"
+  ]
+}

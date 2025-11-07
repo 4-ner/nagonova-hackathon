@@ -2,11 +2,15 @@
 
 
 ## 構成
-- apps/api … FastAPI 
+- apps/api … FastAPI
 - apps/web … Next.js + shadcn/ui
 - packages/shared … 共有ユーティリティ
 - supabase/sql … スキーマやポリシー
 - infra … IaC / デプロイ用
+
+## 必要なバージョン
+- **Python**: 3.13
+- **Node.js**: v22.21.1
 
 ## 環境変数
 - ルート `.env` を `.env.example` から作成し、Supabase の鍵を設定
