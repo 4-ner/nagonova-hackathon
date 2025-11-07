@@ -9,7 +9,12 @@
       "mcp__notionApi__API-post-page",
       "mcp__notionApi__API-retrieve-a-database",
       "mcp__notionApi__API-patch-block-children",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(pnpx shadcn@latest add:*)",
+      "Bash(pnpm build:*)"
     ],
     "deny": [],
     "ask": []

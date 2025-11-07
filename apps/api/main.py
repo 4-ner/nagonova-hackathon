@@ -115,11 +115,12 @@ async def health_check():
 # ルーター登録
 # ========================================
 
-from routers import companies, rfps, matching
+from routers import companies, rfps, matching, documents
 
 app.include_router(companies.router, prefix="/api", tags=["companies"])
 app.include_router(rfps.router, prefix="/api", tags=["rfps"])
 app.include_router(matching.router, prefix="/api", tags=["matching"])
+app.include_router(documents.router, prefix="/api", tags=["documents"])
 
 # ========================================
 # 将来の機能拡張用ルーター
