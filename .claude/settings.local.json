@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(uvx fastapi:*)",
-      "mcp__notionApi__API-post-search"
+      "mcp__notionApi__API-post-search",
+      "mcp__notionApi__API-post-database-query",
+      "mcp__notionApi__API-retrieve-a-page",
+      "mcp__notionApi__API-get-block-children",
+      "mcp__notionApi__API-post-page",
+      "mcp__notionApi__API-retrieve-a-database",
+      "mcp__notionApi__API-patch-block-children",
+      "Bash(python -c:*)"
     ],
     "deny": [],
     "ask": []

@@ -103,8 +103,8 @@ pnpm dev
 
 # APIバックエンド（apps/api）
 cd apps/api
-pip install -r requirements.txt
-uvicorn main:app --reload  # または uvx を使用
+uv pip install -r requirements.txt
+uvx uvicorn main:app --reload --port 8000
 # → http://localhost:8000
 ```
 
