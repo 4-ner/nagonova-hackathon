@@ -1,0 +1,7 @@
+-- ここにスキーマを追加します（例）
+-- create table if not exists public.rfps (...);
+-- create table if not exists public.user_profiles (...);
+-- alter table ... enable row level security;
+-- create policy ...;
+--
+-- ※この段階では空のままでもOK。ダッシュボードの SQL Editor で実行しても良いです。
