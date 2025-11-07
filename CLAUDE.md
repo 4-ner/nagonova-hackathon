@@ -24,9 +24,48 @@ infra/          # インフラ・デプロイ設定（現在は空）
 - **ランタイム**: React 19
 - **UIコンポーネント**: shadcn/ui を使用（`components.json`で設定）
 - **パスエイリアス**:
-  - `@/components` → components/
-  - `@/lib` → lib/
-  - `@/hooks` → hooks/
+  - `@/components` → src/components/
+  - `@/lib` → src/lib/
+  - `@/hooks` → src/hooks/
+
+### Directory Structure
+
+The frontend follows a **Feature-based directory structure** pattern:
+
+```
+apps/web/src/
+├── app/                      # Next.js App Router pages
+│   ├── (dashboard)/          # Authenticated route group
+│   └── login/                # Public login page
+├── features/                 # Feature modules
+│   ├── auth/                 # Authentication feature
+│   └── users/                # User management feature
+│       ├── components/       # Feature-specific components
+│       ├── hooks/            # Feature-specific hooks
+│       ├── types/            # Feature-specific types
+│       ├── schemas/          # Validation schemas (Zod)
+│       └── utils/            # Feature utilities
+├── components/               # Shared components
+│   ├── layout/               # Layout components
+│   └── ui/                   # shadcn/ui components
+├── hooks/                    # Global custom hooks
+├── lib/                      # Utilities and helpers
+└── providers/                # React Context providers
+```
+#### Component Design
+
+- Use **shadcn/ui** as the base UI component library
+- All components are **Client Components** by default (use `'use client'` directive)
+- Use **TypeScript strict mode** for type safety
+- Import paths use `@/` alias for absolute imports
+
+#### State Management
+
+- **SWR** - Server state caching and synchronization
+  - Use `useApi` hook for GET requests
+  - Use `useApiMutation` hook for POST/PUT/DELETE requests
+- **React Context** - Global state (authentication, theme)
+- **React Hook Form + Zod** - Form state and validation
 
 ### バックエンド（apps/api）
 
@@ -107,6 +146,30 @@ pnpm lint
 2. **開発タスク登録**: 仕様に基づいて具体的な開発タスクを作成
 3. **タスク実施**: ステータスを「進行中」に更新して開発を進める
 4. **完了報告**: 実装完了後、ステータスを「完了」に更新
+
+### タスク着手時のワークフロー
+
+1. タスクの状態を「着手中」に変更
+2. タスクの開始日時を設定 (時間まで記載すること)
+3. Git で develop からブランチを作成 (ブランチ名は`feature/<タスクID>`とする)
+4. 空コミットを作成 (コミットメッセージは`chore: start feature/<タスクID>`とする)
+5. PR を作成 (`gh pr create --assignee @me --base develop --draft`)
+  - タイトルはタスクのタイトルを参照する (`【<タスクID>】<タイトル>`)
+  - ボディはタスクの内容から生成する (Notion タスクへのリンクを含める)
+6. 実装計画を考えて、ユーザーに伝える
+7. ユーザーにプロンプトを返す
+
+### タスク完了時のワークフロー
+
+1. PR のステータスを ready にする
+2. PR をマージ (`gh pr merge --merge --auto --delete-branch`)
+3. タスクの開始日時を設定 (時間まで記載すること)
+4. タスクに「サマリー」を追加
+  - コマンドライン履歴とコンテキストを参照して、振り返りを効率かするための文章を作成
+  - Notion の見出しは「振り返り」とする
+5. タスクの状態を「完了」に変更
+6. タスクの完了日時を記載 (時間まで記載すること)
+7. ユーザーにプロンプトを返す
 
 ### Claude Codeからのアクセス
 
