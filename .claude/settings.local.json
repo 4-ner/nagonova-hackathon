@@ -10,11 +10,22 @@
       "mcp__notionApi__API-retrieve-a-database",
       "mcp__notionApi__API-patch-block-children",
       "Bash(python -c:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(uv run:*)",
+      "Bash(uvx uvicorn:*)",
+      "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
       "Bash(gh pr create:*)",
       "Bash(pnpx shadcn@latest add:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "mcp__notionApi__API-patch-page"
     ],
     "deny": [],
     "ask": []
