@@ -138,7 +138,7 @@ export function DocumentUploadDialog({ trigger }: DocumentUploadDialogProps) {
       setUploadProgress(10);
       const { upload_url, storage_path } = await generateUploadUrl({
         filename: selectedFile.name,
-        content_type: selectedFile.type || 'application/octet-stream',
+        file_size: selectedFile.size,
       });
 
       // 2. Storageへアップロード
@@ -163,8 +163,7 @@ export function DocumentUploadDialog({ trigger }: DocumentUploadDialogProps) {
         description: data.description,
         kind: data.kind,
         storage_path,
-        file_size: selectedFile.size,
-        mime_type: selectedFile.type || 'application/octet-stream',
+        size_bytes: selectedFile.size,
       });
 
       setUploadProgress(100);

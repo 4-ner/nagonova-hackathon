@@ -162,7 +162,7 @@ export function DocumentCard({ document, onEdit }: DocumentCardProps) {
           {/* ファイルサイズ */}
           <div className="flex items-center gap-2">
             <File className="h-4 w-4 shrink-0" />
-            <span>{formatFileSize(document.file_size)}</span>
+            <span>{formatFileSize(document.size_bytes)}</span>
           </div>
 
           {/* 作成日時 */}
