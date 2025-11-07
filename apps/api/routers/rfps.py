@@ -11,7 +11,14 @@ from supabase import Client
 
 from database import get_supabase_client
 from middleware.auth import CurrentUserId
-from schemas.rfp import RFPResponse, RFPListResponse, IngestRequest, IngestResponse
+from schemas.rfp import (
+    RFPResponse,
+    RFPListResponse,
+    RFPWithMatchingResponse,
+    RFPWithMatchingListResponse,
+    IngestRequest,
+    IngestResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +106,170 @@ async def get_rfps(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="RFP一覧の取得に失敗しました",
+        )
+
+
+@router.get(
+    "/rfps/with-matching",
+    response_model=RFPWithMatchingListResponse,
+    summary="マッチングスコア付きRFP一覧を取得",
+    description="認証されたユーザーのマッチングスコア付きでRFP一覧を取得します。",
+)
+async def get_rfps_with_matching(
+    user_id: CurrentUserId,
+    supabase: Annotated[Client, Depends(get_supabase_client)],
+    page: int = Query(1, ge=1, description="ページ番号"),
+    page_size: int = Query(20, ge=1, le=100, description="ページサイズ"),
+    min_score: int | None = Query(None, ge=0, le=100, description="最小マッチングスコア"),
+    must_requirements_only: bool = Query(False, description="必須要件を満たす案件のみ表示"),
+) -> RFPWithMatchingListResponse:
+    """
+    マッチングスコア付きRFP一覧取得
+
+    ログインユーザーの会社情報に基づいたマッチングスコア付きでRFP一覧を取得します。
+
+    Args:
+        user_id: 認証ユーザーID
+        supabase: Supabaseクライアント
+        page: ページ番号（デフォルト: 1）
+        page_size: ページサイズ（デフォルト: 20、最大: 100）
+        min_score: 最小マッチングスコア（オプション）
+        must_requirements_only: 必須要件を満たす案件のみ表示（デフォルト: False）
+
+    Returns:
+        RFPWithMatchingListResponse: マッチングスコア付きRFP一覧
+
+    Raises:
+        HTTPException: 会社情報が見つからない、取得エラー
+    """
+    try:
+        # ユーザーの会社情報を取得
+        company_response = (
+            supabase.table("companies")
+            .select("id")
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not company_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="会社情報が見つかりません。先にプロフィールを登録してください。",
+            )
+
+        company_id = company_response.data["id"]
+
+        # オフセット計算
+        offset = (page - 1) * page_size
+
+        # マッチングスナップショットとRFP情報を結合して取得
+        query_builder = (
+            supabase.table("match_snapshots")
+            .select(
+                """
+                match_score,
+                must_requirements_ok,
+                budget_match_ok,
+                region_match_ok,
+                match_factors,
+                summary_points,
+                updated_at,
+                rfps:rfp_id (
+                    id,
+                    external_id,
+                    title,
+                    issuing_org,
+                    description,
+                    budget,
+                    region,
+                    deadline,
+                    url,
+                    external_doc_urls,
+                    has_embedding,
+                    created_at,
+                    updated_at,
+                    fetched_at
+                )
+            """,
+                count="exact",
+            )
+            .eq("company_id", company_id)
+        )
+
+        # フィルタリング条件を適用
+        if min_score is not None:
+            query_builder = query_builder.gte("match_score", min_score)
+
+        if must_requirements_only:
+            query_builder = query_builder.eq("must_requirements_ok", True)
+
+        # スコア降順でソート
+        query_builder = query_builder.order("match_score", desc=True)
+
+        # ページネーション
+        query_builder = query_builder.range(offset, offset + page_size - 1)
+
+        # クエリ実行
+        response = query_builder.execute()
+
+        # レスポンスの整形
+        items = []
+        for record in response.data:
+            rfp_data = record.get("rfps")
+            if not rfp_data:
+                logger.warning(f"RFP data not found for match_snapshot with company_id={company_id}")
+                continue
+
+            # RFP情報とマッチング情報を結合
+            item = RFPWithMatchingResponse(
+                # RFP基本情報
+                id=rfp_data["id"],
+                external_id=rfp_data["external_id"],
+                title=rfp_data["title"],
+                issuing_org=rfp_data["issuing_org"],
+                description=rfp_data["description"],
+                budget=rfp_data.get("budget"),
+                region=rfp_data["region"],
+                deadline=rfp_data["deadline"],
+                url=rfp_data.get("url"),
+                external_doc_urls=rfp_data.get("external_doc_urls", []),
+                has_embedding=rfp_data.get("embedding") is not None,
+                created_at=rfp_data["created_at"],
+                updated_at=rfp_data["updated_at"],
+                fetched_at=rfp_data["fetched_at"],
+                # マッチング情報
+                match_score=record["match_score"],
+                must_requirements_ok=record["must_requirements_ok"],
+                budget_match_ok=record["budget_match_ok"],
+                region_match_ok=record["region_match_ok"],
+                match_factors=record["match_factors"],
+                summary_points=record.get("summary_points", []),
+                match_calculated_at=record["updated_at"],
+            )
+            items.append(item)
+
+        total = response.count if response.count is not None else 0
+
+        logger.info(
+            f"マッチングスコア付きRFP一覧を取得しました: user_id={user_id}, company_id={company_id}, "
+            f"total={total}, page={page}, page_size={page_size}"
+        )
+
+        return RFPWithMatchingListResponse(
+            total=total,
+            items=items,
+            page=page,
+            page_size=page_size,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"マッチングスコア付きRFP一覧取得エラー: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="マッチングスコア付きRFP一覧の取得に失敗しました",
         )
 
 

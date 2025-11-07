@@ -51,6 +51,27 @@ class IngestRequest(BaseModel):
     ng_keywords: list[str] = Field(default=["保守", "運用"], description="NGキーワード配列")
 
 
+class RFPWithMatchingResponse(RFPResponse):
+    """マッチングスコア付きRFPレスポンススキーマ"""
+
+    match_score: int | None = Field(None, ge=0, le=100, description="マッチングスコア（0-100）")
+    must_requirements_ok: bool | None = Field(None, description="必須要件を満たすか")
+    budget_match_ok: bool | None = Field(None, description="予算が適合するか")
+    region_match_ok: bool | None = Field(None, description="地域が適合するか")
+    match_factors: dict | None = Field(None, description="マッチング要因の内訳")
+    summary_points: list[str] = Field(default_factory=list, description="マッチング理由のサマリー")
+    match_calculated_at: datetime | None = Field(None, description="マッチングスコア計算日時")
+
+
+class RFPWithMatchingListResponse(BaseModel):
+    """マッチングスコア付きRFP一覧レスポンススキーマ"""
+
+    total: int = Field(..., description="総件数")
+    items: list[RFPWithMatchingResponse] = Field(..., description="RFPアイテム配列")
+    page: int = Field(..., description="現在のページ番号")
+    page_size: int = Field(..., description="ページサイズ")
+
+
 class IngestResponse(BaseModel):
     """RFP取得レスポンススキーマ（管理者用）"""
 
