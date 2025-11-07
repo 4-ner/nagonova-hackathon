@@ -4,6 +4,8 @@ Supabase Storageサービス
 ファイルのアップロード/ダウンロード用の署名付きURL生成、ファイル削除を提供します。
 """
 import logging
+import os
+import re
 import uuid
 from pathlib import Path
 from typing import Tuple
@@ -22,6 +24,21 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 class StorageService:
     """Supabase Storage操作サービス"""
 
+    # 許可されるMIME Type
+    ALLOWED_MIME_TYPES = {
+        'pdf': ['application/pdf'],
+        'word': [
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/msword',
+        ],
+        'ppt': [
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'application/vnd.ms-powerpoint',
+        ],
+        'image': ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'],
+        'text': ['text/plain'],
+    }
+
     def __init__(self, supabase_client: Client):
         """
         初期化
@@ -30,6 +47,68 @@ class StorageService:
             supabase_client: Supabaseクライアント
         """
         self.supabase = supabase_client
+
+    def sanitize_filename(self, filename: str) -> str:
+        """
+        ファイル名をサニタイズ
+
+        Args:
+            filename: 元のファイル名
+
+        Returns:
+            str: サニタイズされたファイル名
+
+        Raises:
+            ValueError: 無効なファイル名の場合
+        """
+        # パスからファイル名のみ抽出
+        safe_name = Path(filename).name
+
+        # 危険な文字を除去（英数字、スペース、ハイフン、アンダースコア、ドットのみ許可）
+        safe_name = re.sub(r'[^\w\s.-]', '', safe_name)
+
+        # 連続するドットを単一に（..攻撃防止）
+        safe_name = re.sub(r'\.+', '.', safe_name)
+
+        # 先頭・末尾の空白とドットを削除
+        safe_name = safe_name.strip('. ')
+
+        # ファイル名長を制限（拡張子を考慮）
+        max_length = 255
+        if len(safe_name) > max_length:
+            name, ext = os.path.splitext(safe_name)
+            safe_name = name[:max_length - len(ext)] + ext
+
+        # 空文字列チェック
+        if not safe_name or safe_name == '.':
+            raise ValueError("無効なファイル名です")
+
+        return safe_name
+
+    def validate_file_type(self, kind: str, filename: str) -> None:
+        """
+        ファイルタイプの検証
+
+        Args:
+            kind: ドキュメント種別
+            filename: ファイル名
+
+        Raises:
+            ValueError: 許可されていないファイルタイプの場合
+        """
+        # 拡張子からMIME Typeを推測
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(filename)
+
+        if not mime_type:
+            raise ValueError(f"ファイルタイプを判定できません: {filename}")
+
+        allowed_types = self.ALLOWED_MIME_TYPES.get(kind, [])
+
+        if mime_type not in allowed_types:
+            raise ValueError(
+                f"許可されていないファイルタイプです: {mime_type} (種別: {kind})"
+            )
 
     def generate_storage_path(self, user_id: str, filename: str) -> str:
         """
@@ -48,7 +127,7 @@ class StorageService:
         document_id = str(uuid.uuid4())
 
         # ファイル名をサニタイズ
-        safe_filename = Path(filename).name
+        safe_filename = self.sanitize_filename(filename)
 
         # パスを生成
         storage_path = f"{user_id}/{document_id}/{safe_filename}"
@@ -58,7 +137,7 @@ class StorageService:
         return storage_path
 
     def create_signed_upload_url(
-        self, user_id: str, filename: str, file_size: int
+        self, user_id: str, filename: str, file_size: int, kind: str = None
     ) -> Tuple[str, str]:
         """
         署名付きアップロードURLを生成
@@ -67,12 +146,13 @@ class StorageService:
             user_id: ユーザーID
             filename: ファイル名
             file_size: ファイルサイズ（バイト）
+            kind: ドキュメント種別（オプション）
 
         Returns:
             Tuple[str, str]: (署名付きURL, Storageパス)
 
         Raises:
-            ValueError: ファイルサイズが制限を超える場合
+            ValueError: ファイルサイズが制限を超える場合、またはファイルタイプが無効な場合
             Exception: URL生成エラー
         """
         # ファイルサイズチェック
@@ -80,6 +160,10 @@ class StorageService:
             raise ValueError(
                 f"ファイルサイズが制限を超えています（最大: {MAX_FILE_SIZE / 1024 / 1024}MB）"
             )
+
+        # ファイルタイプ検証（kindが提供されている場合）
+        if kind and kind != 'url':
+            self.validate_file_type(kind, filename)
 
         # Storageパス生成
         storage_path = self.generate_storage_path(user_id, filename)

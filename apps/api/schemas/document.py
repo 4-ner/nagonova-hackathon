@@ -68,6 +68,7 @@ class UploadUrlRequest(BaseModel):
 
     filename: str = Field(..., description="ファイル名")
     file_size: int = Field(..., ge=1, description="ファイルサイズ（バイト）")
+    kind: DocumentKind | None = Field(None, description="ドキュメント種別（ファイルタイプ検証用）")
 
 
 class UploadUrlResponse(BaseModel):

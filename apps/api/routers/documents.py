@@ -35,6 +35,34 @@ def get_storage_service(
     return StorageService(supabase)
 
 
+async def get_user_company_id(
+    user_id: CurrentUserId,
+    supabase: Annotated[Client, Depends(get_supabase_client)]
+) -> str:
+    """
+    ユーザーの会社IDを取得
+
+    Args:
+        user_id: 認証ユーザーID
+        supabase: Supabaseクライアント
+
+    Returns:
+        str: 会社ID
+
+    Raises:
+        HTTPException: ユーザーが見つからない場合
+    """
+    user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
+
+    if not user_response.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ユーザーが見つかりません",
+        )
+
+    return user_response.data[0]["company_id"]
+
+
 @router.get(
     "/documents",
     response_model=DocumentListResponse,
@@ -42,7 +70,7 @@ def get_storage_service(
     description="認証されたユーザーの会社に紐づくドキュメント一覧を取得します。",
 )
 async def get_documents(
-    user_id: CurrentUserId,
+    company_id: Annotated[str, Depends(get_user_company_id)],
     supabase: Annotated[Client, Depends(get_supabase_client)],
     page: int = Query(1, ge=1, description="ページ番号"),
     page_size: int = Query(20, ge=1, le=100, description="ページサイズ"),
@@ -51,7 +79,7 @@ async def get_documents(
     ドキュメント一覧取得
 
     Args:
-        user_id: 認証ユーザーID
+        company_id: 会社ID
         supabase: Supabaseクライアント
         page: ページ番号
         page_size: ページサイズ
@@ -63,17 +91,6 @@ async def get_documents(
         HTTPException: 取得エラー
     """
     try:
-        # ユーザーの会社IDを取得
-        user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
-
-        if not user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="ユーザーが見つかりません",
-            )
-
-        company_id = user_response.data[0]["company_id"]
-
         # オフセット計算
         offset = (page - 1) * page_size
 
@@ -96,7 +113,7 @@ async def get_documents(
         total = response.count if response.count is not None else 0
 
         logger.info(
-            f"ドキュメント一覧を取得しました: user_id={user_id}, company_id={company_id}, total={total}"
+            f"ドキュメント一覧を取得しました: company_id={company_id}, total={total}"
         )
 
         return DocumentListResponse(
@@ -124,7 +141,7 @@ async def get_documents(
 )
 async def get_document(
     document_id: str,
-    user_id: CurrentUserId,
+    company_id: Annotated[str, Depends(get_user_company_id)],
     supabase: Annotated[Client, Depends(get_supabase_client)],
 ) -> DocumentResponse:
     """
@@ -132,7 +149,7 @@ async def get_document(
 
     Args:
         document_id: ドキュメントID
-        user_id: 認証ユーザーID
+        company_id: 会社ID
         supabase: Supabaseクライアント
 
     Returns:
@@ -142,17 +159,6 @@ async def get_document(
         HTTPException: ドキュメントが見つからない、または取得エラー
     """
     try:
-        # ユーザーの会社IDを取得
-        user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
-
-        if not user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="ユーザーが見つかりません",
-            )
-
-        company_id = user_response.data[0]["company_id"]
-
         # ドキュメント取得（会社IDで絞り込み）
         response = (
             supabase.table("company_documents")
@@ -191,7 +197,7 @@ async def get_document(
 )
 async def create_url_document(
     document_data: DocumentCreateUrl,
-    user_id: CurrentUserId,
+    company_id: Annotated[str, Depends(get_user_company_id)],
     supabase: Annotated[Client, Depends(get_supabase_client)],
 ) -> DocumentResponse:
     """
@@ -199,7 +205,7 @@ async def create_url_document(
 
     Args:
         document_data: ドキュメント作成データ
-        user_id: 認証ユーザーID
+        company_id: 会社ID
         supabase: Supabaseクライアント
 
     Returns:
@@ -209,17 +215,6 @@ async def create_url_document(
         HTTPException: 作成エラー
     """
     try:
-        # ユーザーの会社IDを取得
-        user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
-
-        if not user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="ユーザーが見つかりません",
-            )
-
-        company_id = user_response.data[0]["company_id"]
-
         # ドキュメント作成
         insert_data = {
             "company_id": company_id,
@@ -238,7 +233,7 @@ async def create_url_document(
             )
 
         logger.info(
-            f"URL型ドキュメントを作成しました: user_id={user_id}, company_id={company_id}, "
+            f"URL型ドキュメントを作成しました: company_id={company_id}, "
             f"document_id={response.data[0]['id']}"
         )
 
@@ -281,7 +276,7 @@ async def generate_upload_url(
     """
     try:
         upload_url, storage_path = storage_service.create_signed_upload_url(
-            user_id, request_data.filename, request_data.file_size
+            user_id, request_data.filename, request_data.file_size, request_data.kind
         )
 
         logger.info(f"アップロード用署名付きURLを生成しました: user_id={user_id}, filename={request_data.filename}")
@@ -314,7 +309,7 @@ async def generate_upload_url(
 )
 async def create_file_document(
     document_data: DocumentCreateFile,
-    user_id: CurrentUserId,
+    company_id: Annotated[str, Depends(get_user_company_id)],
     supabase: Annotated[Client, Depends(get_supabase_client)],
 ) -> DocumentResponse:
     """
@@ -324,7 +319,7 @@ async def create_file_document(
 
     Args:
         document_data: ドキュメント作成データ
-        user_id: 認証ユーザーID
+        company_id: 会社ID
         supabase: Supabaseクライアント
 
     Returns:
@@ -334,17 +329,6 @@ async def create_file_document(
         HTTPException: 作成エラー
     """
     try:
-        # ユーザーの会社IDを取得
-        user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
-
-        if not user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="ユーザーが見つかりません",
-            )
-
-        company_id = user_response.data[0]["company_id"]
-
         # ドキュメント作成
         insert_data = {
             "company_id": company_id,
@@ -364,7 +348,7 @@ async def create_file_document(
             )
 
         logger.info(
-            f"ファイル型ドキュメントを作成しました: user_id={user_id}, company_id={company_id}, "
+            f"ファイル型ドキュメントを作成しました: company_id={company_id}, "
             f"document_id={response.data[0]['id']}"
         )
 
@@ -388,7 +372,7 @@ async def create_file_document(
 )
 async def generate_download_url(
     document_id: str,
-    user_id: CurrentUserId,
+    company_id: Annotated[str, Depends(get_user_company_id)],
     supabase: Annotated[Client, Depends(get_supabase_client)],
     storage_service: Annotated[StorageService, Depends(get_storage_service)] = None,
 ) -> DownloadUrlResponse:
@@ -397,7 +381,7 @@ async def generate_download_url(
 
     Args:
         document_id: ドキュメントID
-        user_id: 認証ユーザーID
+        company_id: 会社ID
         supabase: Supabaseクライアント
         storage_service: Storageサービス
 
@@ -408,17 +392,6 @@ async def generate_download_url(
         HTTPException: ドキュメントが見つからない、またはURL生成エラー
     """
     try:
-        # ユーザーの会社IDを取得
-        user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
-
-        if not user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="ユーザーが見つかりません",
-            )
-
-        company_id = user_response.data[0]["company_id"]
-
         # ドキュメント取得
         response = (
             supabase.table("company_documents")
@@ -471,7 +444,7 @@ async def generate_download_url(
 async def update_document(
     document_id: str,
     document_data: DocumentUpdate,
-    user_id: CurrentUserId,
+    company_id: Annotated[str, Depends(get_user_company_id)],
     supabase: Annotated[Client, Depends(get_supabase_client)],
 ) -> DocumentResponse:
     """
@@ -480,7 +453,7 @@ async def update_document(
     Args:
         document_id: ドキュメントID
         document_data: ドキュメント更新データ
-        user_id: 認証ユーザーID
+        company_id: 会社ID
         supabase: Supabaseクライアント
 
     Returns:
@@ -490,17 +463,6 @@ async def update_document(
         HTTPException: ドキュメントが見つからない、または更新エラー
     """
     try:
-        # ユーザーの会社IDを取得
-        user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
-
-        if not user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="ユーザーが見つかりません",
-            )
-
-        company_id = user_response.data[0]["company_id"]
-
         # 更新データを構築
         update_data = {}
         if document_data.title is not None:
@@ -551,7 +513,7 @@ async def update_document(
 )
 async def delete_document(
     document_id: str,
-    user_id: CurrentUserId,
+    company_id: Annotated[str, Depends(get_user_company_id)],
     supabase: Annotated[Client, Depends(get_supabase_client)],
     storage_service: Annotated[StorageService, Depends(get_storage_service)] = None,
 ) -> None:
@@ -560,7 +522,7 @@ async def delete_document(
 
     Args:
         document_id: ドキュメントID
-        user_id: 認証ユーザーID
+        company_id: 会社ID
         supabase: Supabaseクライアント
         storage_service: Storageサービス
 
@@ -568,17 +530,6 @@ async def delete_document(
         HTTPException: ドキュメントが見つからない、または削除エラー
     """
     try:
-        # ユーザーの会社IDを取得
-        user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
-
-        if not user_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="ユーザーが見つかりません",
-            )
-
-        company_id = user_response.data[0]["company_id"]
-
         # ドキュメント取得
         response = (
             supabase.table("company_documents")
