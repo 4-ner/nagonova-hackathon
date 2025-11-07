@@ -147,7 +147,7 @@ export function useCreateUrlDocument() {
  *   const handleFileSelect = async (file: File) => {
  *     const { upload_url, storage_path } = await trigger({
  *       filename: file.name,
- *       content_type: file.type,
+ *       file_size: file.size,
  *     });
  *
  *     // upload_urlにファイルをアップロード
@@ -165,7 +165,7 @@ export function useGenerateUploadUrl() {
     '/api/documents/upload-url',
     async (
       url: string,
-      { arg }: { arg: { filename: string; content_type: string } }
+      { arg }: { arg: { filename: string; file_size: number } }
     ) => {
       return apiPost<UploadUrlResponse>(url, arg);
     }

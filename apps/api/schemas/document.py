@@ -30,8 +30,7 @@ class DocumentCreateFile(DocumentBase):
     """ファイル型ドキュメント作成リクエスト"""
 
     storage_path: str = Field(..., description="Supabase Storageパス")
-    file_size: int = Field(..., ge=0, description="ファイルサイズ（バイト）")
-    mime_type: str = Field(..., description="MIMEタイプ")
+    size_bytes: int = Field(..., ge=0, description="ファイルサイズ（バイト）")
 
 
 class DocumentUpdate(BaseModel):
@@ -48,8 +47,7 @@ class DocumentResponse(DocumentBase):
     company_id: str = Field(..., description="会社ID (UUID)")
     url: str | None = Field(None, description="ドキュメントURL（URL型の場合）")
     storage_path: str | None = Field(None, description="Storageパス（ファイル型の場合）")
-    file_size: int | None = Field(None, description="ファイルサイズ（バイト）")
-    mime_type: str | None = Field(None, description="MIMEタイプ")
+    size_bytes: int | None = Field(None, description="ファイルサイズ（バイト）")
     created_at: datetime = Field(..., description="作成日時")
     updated_at: datetime = Field(..., description="更新日時")
 
@@ -63,6 +61,13 @@ class DocumentListResponse(BaseModel):
     items: list[DocumentResponse] = Field(..., description="ドキュメントアイテム配列")
     page: int = Field(..., description="現在のページ番号")
     page_size: int = Field(..., description="ページサイズ")
+
+
+class UploadUrlRequest(BaseModel):
+    """アップロードURL生成リクエスト"""
+
+    filename: str = Field(..., description="ファイル名")
+    file_size: int = Field(..., ge=1, description="ファイルサイズ（バイト）")
 
 
 class UploadUrlResponse(BaseModel):

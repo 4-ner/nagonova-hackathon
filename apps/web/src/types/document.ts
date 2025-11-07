@@ -18,8 +18,7 @@ export interface Document {
   kind: DocumentKind;
   url?: string;
   storage_path?: string;
-  file_size?: number;
-  mime_type?: string;
+  size_bytes?: number;
   created_at: string;
   updated_at: string;
 }
@@ -52,8 +51,7 @@ export interface DocumentCreateFileRequest {
   description?: string;
   kind: DocumentKind;
   storage_path: string;
-  file_size: number;
-  mime_type: string;
+  size_bytes: number;
 }
 
 /**

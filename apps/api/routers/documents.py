@@ -17,6 +17,7 @@ from schemas.document import (
     DocumentUpdate,
     DocumentResponse,
     DocumentListResponse,
+    UploadUrlRequest,
     UploadUrlResponse,
     DownloadUrlResponse,
 )
@@ -78,7 +79,7 @@ async def get_documents(
 
         # ドキュメント一覧取得
         query_builder = (
-            supabase.table("documents")
+            supabase.table("company_documents")
             .select("*", count="exact")
             .eq("company_id", company_id)
         )
@@ -154,7 +155,7 @@ async def get_document(
 
         # ドキュメント取得（会社IDで絞り込み）
         response = (
-            supabase.table("documents")
+            supabase.table("company_documents")
             .select("*")
             .eq("id", document_id)
             .eq("company_id", company_id)
@@ -228,7 +229,7 @@ async def create_url_document(
             "url": str(document_data.url),
         }
 
-        response = supabase.table("documents").insert(insert_data).execute()
+        response = supabase.table("company_documents").insert(insert_data).execute()
 
         if not response.data:
             raise HTTPException(
@@ -260,18 +261,16 @@ async def create_url_document(
     description="ファイルをアップロードするための署名付きURLを生成します。",
 )
 async def generate_upload_url(
+    request_data: UploadUrlRequest,
     user_id: CurrentUserId,
-    filename: str = Query(..., description="ファイル名"),
-    file_size: int = Query(..., ge=1, description="ファイルサイズ（バイト）"),
     storage_service: Annotated[StorageService, Depends(get_storage_service)] = None,
 ) -> UploadUrlResponse:
     """
     アップロード用署名付きURL生成
 
     Args:
+        request_data: アップロードURL生成リクエスト
         user_id: 認証ユーザーID
-        filename: ファイル名
-        file_size: ファイルサイズ
         storage_service: Storageサービス
 
     Returns:
@@ -282,10 +281,10 @@ async def generate_upload_url(
     """
     try:
         upload_url, storage_path = storage_service.create_signed_upload_url(
-            user_id, filename, file_size
+            user_id, request_data.filename, request_data.file_size
         )
 
-        logger.info(f"アップロード用署名付きURLを生成しました: user_id={user_id}, filename={filename}")
+        logger.info(f"アップロード用署名付きURLを生成しました: user_id={user_id}, filename={request_data.filename}")
 
         return UploadUrlResponse(
             upload_url=upload_url,
@@ -353,11 +352,10 @@ async def create_file_document(
             "description": document_data.description,
             "kind": document_data.kind,
             "storage_path": document_data.storage_path,
-            "file_size": document_data.file_size,
-            "mime_type": document_data.mime_type,
+            "size_bytes": document_data.size_bytes,
         }
 
-        response = supabase.table("documents").insert(insert_data).execute()
+        response = supabase.table("company_documents").insert(insert_data).execute()
 
         if not response.data:
             raise HTTPException(
@@ -423,7 +421,7 @@ async def generate_download_url(
 
         # ドキュメント取得
         response = (
-            supabase.table("documents")
+            supabase.table("company_documents")
             .select("storage_path")
             .eq("id", document_id)
             .eq("company_id", company_id)
@@ -518,7 +516,7 @@ async def update_document(
 
         # ドキュメント更新
         response = (
-            supabase.table("documents")
+            supabase.table("company_documents")
             .update(update_data)
             .eq("id", document_id)
             .eq("company_id", company_id)
@@ -583,7 +581,7 @@ async def delete_document(
 
         # ドキュメント取得
         response = (
-            supabase.table("documents")
+            supabase.table("company_documents")
             .select("storage_path")
             .eq("id", document_id)
             .eq("company_id", company_id)
@@ -607,7 +605,7 @@ async def delete_document(
 
         # ドキュメントレコード削除
         delete_response = (
-            supabase.table("documents")
+            supabase.table("company_documents")
             .delete()
             .eq("id", document_id)
             .eq("company_id", company_id)
