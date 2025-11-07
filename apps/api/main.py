@@ -115,9 +115,10 @@ async def health_check():
 # ルーター登録
 # ========================================
 
-from routers import companies
+from routers import companies, rfps
 
 app.include_router(companies.router, prefix="/api", tags=["companies"])
+app.include_router(rfps.router, prefix="/api", tags=["rfps"])
 
 # ========================================
 # 将来の機能拡張用ルーター

@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # CORS設定（文字列またはリストを受け入れる）
     cors_origins: str | list[str] = "http://localhost:3000"
 
+    # OpenAI API設定
+    openai_api_key: str
+
+    # KKJ API設定
+    kkj_api_url: str = "http://www.kkj.go.jp/api/"
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):
