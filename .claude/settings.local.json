@@ -14,7 +14,11 @@
       "Bash(git push:*)",
       "Bash(gh pr create:*)",
       "Bash(pnpx shadcn@latest add:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "mcp__notionApi__API-patch-page",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []
