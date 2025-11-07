@@ -39,7 +39,7 @@ export interface RFPWithMatchingListParams {
 /**
  * URLパラメータをクエリ文字列に変換
  */
-function buildQueryString(params: Record<string, unknown>): string {
+function buildQueryString(params: RFPListParams | RFPWithMatchingListParams): string {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {

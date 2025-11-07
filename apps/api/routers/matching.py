@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from supabase import Client
 
 from database import get_supabase_client
-from dependencies.auth import get_current_user
+from middleware.auth import CurrentUserId
 from schemas.matching import MatchingListResponse, MatchingFactors, RFPWithMatchingResponse
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ router = APIRouter()
     description="ログインユーザーの会社に対するRFP案件のマッチング結果を取得します。",
 )
 async def get_my_matching_results(
-    current_user: Annotated[dict, Depends(get_current_user)],
+    user_id: CurrentUserId,
     supabase: Annotated[Client, Depends(get_supabase_client)],
     page: Annotated[int, Query(ge=1, description="ページ番号")] = 1,
     page_size: Annotated[int, Query(ge=1, le=100, description="ページサイズ")] = 20,
@@ -41,7 +41,7 @@ async def get_my_matching_results(
     ログインユーザーの会社に対するマッチング結果を取得します。
 
     Args:
-        current_user: 現在のユーザー情報（依存性注入）
+        user_id: 現在のユーザーID（依存性注入）
         supabase: Supabaseクライアント（依存性注入）
         page: ページ番号（1から始まる）
         page_size: 1ページあたりの件数（最大100）
@@ -55,8 +55,6 @@ async def get_my_matching_results(
     Raises:
         HTTPException: 会社情報が見つからない、データベースエラー等
     """
-    user_id = current_user["id"]
-
     try:
         # ユーザーの会社情報を取得
         company_response = (
