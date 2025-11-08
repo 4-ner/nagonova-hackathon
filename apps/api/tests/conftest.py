@@ -8,20 +8,29 @@ import sys
 from pathlib import Path
 from typing import AsyncGenerator, Generator
 from unittest.mock import MagicMock, AsyncMock
+from dotenv import load_dotenv
 
 # プロジェクトルートをPYTHONPATHに追加
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+# .envファイルを読み込み（RLSテスト用に実際の環境変数が必要）
+load_dotenv(project_root / ".env")
 
 import pytest
 from fastapi.testclient import TestClient
 from supabase import Client
 
 # 環境変数設定（テスト用のダミー値）
-os.environ["SUPABASE_URL"] = "https://test.supabase.co"
-os.environ["SUPABASE_ANON_KEY"] = "test-anon-key"
-os.environ["SUPABASE_SERVICE_KEY"] = "test-service-key"
-os.environ["OPENAI_API_KEY"] = "test-openai-key"
+# ただし、実際のSupabase環境変数がある場合はそれを優先
+if not os.getenv("SUPABASE_URL"):
+    os.environ["SUPABASE_URL"] = "https://test.supabase.co"
+if not os.getenv("SUPABASE_ANON_KEY"):
+    os.environ["SUPABASE_ANON_KEY"] = "test-anon-key"
+if not os.getenv("SUPABASE_SERVICE_KEY"):
+    os.environ["SUPABASE_SERVICE_KEY"] = "test-service-key"
+if not os.getenv("OPENAI_API_KEY"):
+    os.environ["OPENAI_API_KEY"] = "test-openai-key"
 
 from main import app
 from database import get_supabase_client
@@ -155,3 +164,12 @@ def mock_match_snapshot_data() -> dict:
         ],
         "updated_at": "2025-01-01T00:00:00Z",
     }
+
+
+# ============================================================================
+# RLSテスト用フィクスチャのインポート
+# ============================================================================
+# pytest_pluginsを使用してフィクスチャモジュールを登録
+pytest_plugins = [
+    "tests.fixtures.rls_fixtures",
+]

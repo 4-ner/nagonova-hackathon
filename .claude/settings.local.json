@@ -41,7 +41,10 @@
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",
       "Bash(gh pr diff:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pnpx playwright install:*)",
+      "Bash(pnpm test:e2e:*)",
+      "Bash(uv pip:*)"
     ],
     "deny": [],
     "ask": []
