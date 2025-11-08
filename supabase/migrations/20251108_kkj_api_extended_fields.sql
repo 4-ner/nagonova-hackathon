@@ -26,6 +26,14 @@
 BEGIN;
 
 -- ============================================================================
+-- 0. pg_trgm拡張を有効化（日本語全文検索対応）
+-- ============================================================================
+-- pg_trg m（trigram）は類似度検索とLIKE検索を高速化するPostgreSQL拡張です
+-- trigramベースのインデックスにより、LIKE '%キーワード%'検索が高速化されます
+-- Supabaseではpg_trgmが標準で利用可能です
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- ============================================================================
 -- 1. 新規カラム追加
 -- ============================================================================
 
@@ -139,10 +147,11 @@ ON rfps(category, tender_deadline)
 WHERE category IS NOT NULL AND tender_deadline IS NOT NULL;
 
 -- idx_rfps_certification_fulltext: 資格要件全文検索用GINインデックス
--- Japanese言語対応のtsvector全文検索インデックス
+-- pg_trgmを使用した日本語対応の全文検索インデックス
+-- LIKE '%キーワード%'検索や類似度検索（similarity）が高速化されます
 CREATE INDEX idx_rfps_certification_fulltext
 ON rfps
-USING GIN(to_tsvector('japanese', certification))
+USING GIN(certification gin_trgm_ops)
 WHERE certification IS NOT NULL;
 
 -- ============================================================================
