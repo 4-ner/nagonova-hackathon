@@ -88,3 +88,37 @@ class IngestResponse(BaseModel):
 
     status: str = Field(..., description="処理ステータス")
     message: str = Field(..., description="処理メッセージ")
+
+
+class SemanticSearchRequest(BaseModel):
+    """セマンティック検索リクエストスキーマ"""
+
+    query: str = Field(..., min_length=1, description="検索クエリテキスト")
+    similarity_threshold: float = Field(0.7, ge=0.0, le=1.0, description="類似度閾値（0.0~1.0）")
+    result_limit: int = Field(20, ge=1, le=100, description="返却する最大件数")
+    include_match_factors: bool = Field(False, description="マッチング要因を含めるか")
+
+
+class SemanticSearchResultItem(RFPResponse):
+    """セマンティック検索結果アイテムスキーマ"""
+
+    similarity_score: float = Field(..., ge=0.0, le=1.0, description="類似度スコア")
+    match_score: int | None = Field(None, ge=0, le=100, description="マッチングスコア")
+    match_factors: dict | None = Field(None, description="マッチング要因")
+    summary_points: list[str] = Field(default_factory=list, description="マッチングサマリー")
+
+
+class SemanticSearchResponse(BaseModel):
+    """セマンティック検索レスポンススキーマ"""
+
+    total: int = Field(..., description="総件数")
+    items: list[SemanticSearchResultItem] = Field(..., description="検索結果アイテム配列")
+    query: str = Field(..., description="検索クエリ")
+    similarity_threshold: float = Field(..., description="使用した類似度閾値")
+
+
+class SimilarRFPsResponse(BaseModel):
+    """類似RFP検索レスポンススキーマ"""
+
+    rfp_id: str = Field(..., description="基準RFP ID")
+    similar_rfps: list[SemanticSearchResultItem] = Field(..., description="類似RFPリスト")
