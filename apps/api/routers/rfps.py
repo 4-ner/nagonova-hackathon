@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi.responses import PlainTextResponse
 from supabase import Client
 
 from database import get_supabase_client
@@ -20,6 +21,7 @@ from schemas.rfp import (
     IngestRequest,
     IngestResponse,
 )
+from services.proposal_generator import ProposalGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -403,4 +405,113 @@ async def ingest_rfps_from_kkj(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="RFP取得処理の開始に失敗しました",
+        )
+
+
+@router.get(
+    "/rfps/{rfp_id}/proposal/draft",
+    response_class=PlainTextResponse,
+    summary="提案書ドラフトを生成",
+    description="指定されたRFPに対する提案書ドラフトをMarkdown形式で生成します。",
+)
+async def generate_proposal_draft(
+    rfp_id: str,
+    user_id: CurrentUserId,
+    supabase: Annotated[Client, Depends(get_supabase_client)],
+) -> str:
+    """
+    提案書ドラフト生成
+
+    認証ユーザーの会社情報とRFP情報を元に、提案書のドラフトを
+    Markdown形式で生成します。マッチング情報が存在する場合は、
+    マッチングスコアとサマリーポイントも含めます。
+
+    Args:
+        rfp_id: RFP UUID
+        user_id: 認証ユーザーID
+        supabase: Supabaseクライアント
+
+    Returns:
+        str: 提案書ドラフトのMarkdown文字列
+
+    Raises:
+        HTTPException: 会社情報が未登録、RFPが存在しない、生成エラー
+    """
+    try:
+        # ユーザーの会社情報を取得
+        company_response = (
+            supabase.table("companies")
+            .select("*")
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not company_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="会社情報が見つかりません。先にプロフィールを登録してください。",
+            )
+
+        company = company_response.data
+
+        # RFP情報を取得
+        rfp_response = (
+            supabase.table("rfps")
+            .select("*")
+            .eq("id", rfp_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not rfp_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="RFPが見つかりません",
+            )
+
+        rfp = rfp_response.data
+
+        # マッチング情報を取得（オプション）
+        match_score = None
+        summary_points = None
+
+        match_response = (
+            supabase.table("match_snapshots")
+            .select("match_score, summary_points")
+            .eq("company_id", company["id"])
+            .eq("rfp_id", rfp_id)
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if match_response.data and len(match_response.data) > 0:
+            match_data = match_response.data[0]
+            match_score = match_data.get("match_score")
+            summary_points = match_data.get("summary_points", [])
+
+        # ProposalGeneratorを初期化して提案書を生成
+        generator = ProposalGenerator()
+        proposal_markdown = generator.generate_proposal_draft(
+            rfp=rfp,
+            company=company,
+            match_score=match_score,
+            summary_points=summary_points,
+        )
+
+        logger.info(
+            f"提案書ドラフトを生成しました: user_id={user_id}, rfp_id={rfp_id}, "
+            f"length={len(proposal_markdown)}"
+        )
+
+        return proposal_markdown
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"提案書ドラフト生成エラー: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="提案書ドラフトの生成に失敗しました",
         )

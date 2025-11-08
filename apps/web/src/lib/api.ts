@@ -100,6 +100,37 @@ export async function apiGet<T>(url: string): Promise<T> {
 }
 
 /**
+ * GET リクエスト（プレーンテキスト）
+ */
+export async function apiGetText(url: string): Promise<string> {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new ApiError('認証されていません', 401);
+  }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+  const response = await fetch(`${baseUrl}${url}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text().catch(() => null);
+    const message = errorData || `HTTPエラー: ${response.status}`;
+    throw new ApiError(message, response.status);
+  }
+
+  return await response.text();
+}
+
+/**
  * POST リクエスト
  */
 export async function apiPost<T>(url: string, data: unknown): Promise<T> {

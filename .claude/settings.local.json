@@ -35,7 +35,13 @@
       "Bash(cat:*)",
       "Bash(uv pip install:*)",
       "Bash(pnpm test:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "Bash(pnpm run build)",
+      "Bash(git fetch:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
