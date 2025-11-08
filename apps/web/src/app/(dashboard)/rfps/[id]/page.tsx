@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MatchScore } from '@/components/rfp/MatchScore';
+import { BookmarkButton } from '@/features/bookmarks/components/BookmarkButton';
 import { useRfp } from '@/hooks/useRfps';
 
 interface RfpDetailPageProps {
@@ -100,7 +101,10 @@ export default function RfpDetailPage({ params }: RfpDetailPageProps) {
           <Card>
             <CardHeader>
               <div className="space-y-4">
-                <CardTitle className="text-2xl">{rfp.title}</CardTitle>
+                <div className="flex items-start justify-between gap-4">
+                  <CardTitle className="text-2xl flex-1">{rfp.title}</CardTitle>
+                  <BookmarkButton rfpId={rfp.id} size="default" variant="outline" />
+                </div>
                 <div className="flex items-center justify-between">
                   <p className="text-muted-foreground">{rfp.issuing_org}</p>
                   {rfp.url && (

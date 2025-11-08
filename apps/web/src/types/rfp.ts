@@ -97,3 +97,33 @@ export interface RFPWithMatchingListResponse {
   /** ページサイズ */
   page_size: number;
 }
+
+/**
+ * ブックマーク型
+ */
+export interface Bookmark {
+  /** ブックマークID */
+  id: string;
+  /** ユーザーID */
+  user_id: string;
+  /** RFP ID */
+  rfp_id: string;
+  /** 作成日時 */
+  created_at: string;
+  /** RFP情報（optional） */
+  rfp?: RFP;
+}
+
+/**
+ * ブックマーク一覧レスポンス
+ */
+export interface BookmarkListResponse {
+  /** 総件数 */
+  total: number;
+  /** ブックマークアイテム配列 */
+  items: Bookmark[];
+  /** 現在のページ番号 */
+  page: number;
+  /** ページサイズ */
+  page_size: number;
+}

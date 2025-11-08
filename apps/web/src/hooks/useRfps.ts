@@ -34,6 +34,14 @@ export interface RFPWithMatchingListParams {
   min_score?: number;
   /** 必須要件を満たす案件のみ表示 */
   must_requirements_only?: boolean;
+  /** 締切日フィルター（日数） */
+  deadline_days?: number;
+  /** 都道府県コード */
+  region?: string;
+  /** 最小予算（円） */
+  budget_min?: number;
+  /** 最大予算（円） */
+  budget_max?: number;
 }
 
 /**

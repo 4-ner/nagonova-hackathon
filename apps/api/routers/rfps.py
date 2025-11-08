@@ -4,6 +4,7 @@ RFP管理APIルーター
 RFPの参照操作と管理者用のRFP取得トリガーを提供します。
 """
 import logging
+from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
@@ -122,6 +123,9 @@ async def get_rfps_with_matching(
     page_size: int = Query(20, ge=1, le=100, description="ページサイズ"),
     min_score: int | None = Query(None, ge=0, le=100, description="最小マッチングスコア"),
     must_requirements_only: bool = Query(False, description="必須要件を満たす案件のみ表示"),
+    deadline_days: int | None = Query(None, ge=1, description="指定日数以内に締切がある案件のみ表示（7, 14, 30など）"),
+    budget_min: int | None = Query(None, ge=0, description="予算の最小値（円）"),
+    budget_max: int | None = Query(None, ge=0, description="予算の最大値（円）"),
 ) -> RFPWithMatchingListResponse:
     """
     マッチングスコア付きRFP一覧取得
@@ -135,6 +139,9 @@ async def get_rfps_with_matching(
         page_size: ページサイズ（デフォルト: 20、最大: 100）
         min_score: 最小マッチングスコア（オプション）
         must_requirements_only: 必須要件を満たす案件のみ表示（デフォルト: False）
+        deadline_days: 指定日数以内に締切がある案件のみ表示（オプション、例: 7, 14, 30）
+        budget_min: 予算の最小値（円）（オプション）
+        budget_max: 予算の最大値（円）（オプション）
 
     Returns:
         RFPWithMatchingListResponse: マッチングスコア付きRFP一覧
@@ -204,6 +211,23 @@ async def get_rfps_with_matching(
         if must_requirements_only:
             query_builder = query_builder.eq("must_requirements_ok", True)
 
+        # 締切日フィルタ（指定日数以内に締切がある案件のみ）
+        if deadline_days is not None:
+            # Pythonで日付を計算してフィルタリング
+            today = date.today()
+            deadline_date = today + timedelta(days=deadline_days)
+
+            query_builder = query_builder.gte("rfps.deadline", str(today))
+            query_builder = query_builder.lte("rfps.deadline", str(deadline_date))
+
+        # 予算最小値フィルタ（NULLは除外）
+        if budget_min is not None:
+            query_builder = query_builder.gte("rfps.budget", budget_min)
+
+        # 予算最大値フィルタ（NULLは除外）
+        if budget_max is not None:
+            query_builder = query_builder.lte("rfps.budget", budget_max)
+
         # スコア降順でソート
         query_builder = query_builder.order("match_score", desc=True)
 
@@ -253,7 +277,9 @@ async def get_rfps_with_matching(
 
         logger.info(
             f"マッチングスコア付きRFP一覧を取得しました: user_id={user_id}, company_id={company_id}, "
-            f"total={total}, page={page}, page_size={page_size}"
+            f"total={total}, page={page}, page_size={page_size}, "
+            f"min_score={min_score}, must_requirements_only={must_requirements_only}, "
+            f"deadline_days={deadline_days}, budget_min={budget_min}, budget_max={budget_max}"
         )
 
         return RFPWithMatchingListResponse(

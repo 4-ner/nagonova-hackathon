@@ -9,6 +9,8 @@ interface MatchScoreProps {
   rfp: RFPWithMatching;
   /** 詳細表示するか */
   showDetails?: boolean;
+  /** 表示する要約ポイントの最大数（undefinedの場合は全て表示） */
+  maxSummaryPoints?: number;
 }
 
 /**
@@ -21,7 +23,11 @@ interface MatchScoreProps {
  * <MatchScore rfp={rfp} showDetails={true} />
  * ```
  */
-export function MatchScore({ rfp, showDetails = false }: MatchScoreProps) {
+export function MatchScore({
+  rfp,
+  showDetails = false,
+  maxSummaryPoints
+}: MatchScoreProps) {
   const score = rfp.match_score ?? 0;
 
   // スコアに応じた色を返す
@@ -73,13 +79,22 @@ export function MatchScore({ rfp, showDetails = false }: MatchScoreProps) {
         <Card className="p-4 bg-muted/50">
           <h4 className="font-semibold mb-2 text-sm">マッチング理由</h4>
           <ul className="space-y-1 text-sm text-muted-foreground">
-            {rfp.summary_points.map((point, index) => (
+            {(maxSummaryPoints !== undefined
+              ? rfp.summary_points.slice(0, maxSummaryPoints)
+              : rfp.summary_points
+            ).map((point, index) => (
               <li key={index} className="flex items-start gap-2">
                 <span className="text-primary mt-0.5">•</span>
                 <span>{point}</span>
               </li>
             ))}
           </ul>
+          {maxSummaryPoints !== undefined &&
+            rfp.summary_points.length > maxSummaryPoints && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                他{rfp.summary_points.length - maxSummaryPoints}件
+              </p>
+            )}
 
           {/* マッチング要因の内訳 */}
           {rfp.match_factors && (
