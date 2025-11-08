@@ -34,6 +34,24 @@ export interface RFP {
   updated_at: string;
   /** 取得日時 */
   fetched_at: string;
+  /** 案件カテゴリ */
+  category?: string;
+  /** 入札手続きの種類 */
+  procedure_type?: string;
+  /** 仕様書発行日（ISO8601形式） */
+  cft_issue_date?: string;
+  /** 入札締切日時（ISO8601形式） */
+  tender_deadline?: string;
+  /** 開札日時（ISO8601形式） */
+  opening_event_date?: string;
+  /** 品目分類コード */
+  item_code?: string;
+  /** 地方自治体コード */
+  lg_code?: string;
+  /** 市区町村コード */
+  city_code?: string;
+  /** 参加資格情報 */
+  certification?: string;
 }
 
 /**

@@ -28,6 +28,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _escape_like_pattern(pattern: str) -> str:
+    """
+    LIKE検索パターンの特殊文字をエスケープします。
+
+    PostgreSQLのLIKE検索で使用される特殊文字（%, _, \）を
+    エスケープして、意図しないワイルドカード検索を防ぎます。
+
+    Args:
+        pattern: エスケープ対象の検索パターン
+
+    Returns:
+        エスケープ済みの検索パターン
+
+    Examples:
+        >>> _escape_like_pattern("test%value")
+        'test\\%value'
+        >>> _escape_like_pattern("100%達成")
+        '100\\%達成'
+    """
+    return (
+        pattern
+        .replace("\\", "\\\\")  # バックスラッシュを最初にエスケープ
+        .replace("%", "\\%")    # %をエスケープ
+        .replace("_", "\\_")    # _をエスケープ
+    )
+
+
 @router.get(
     "/rfps",
     response_model=RFPListResponse,
@@ -41,6 +68,12 @@ async def get_rfps(
     page_size: int = Query(20, ge=1, le=100, description="ページサイズ"),
     region: str | None = Query(None, description="都道府県コードフィルター"),
     query: str | None = Query(None, description="タイトル・説明文での検索"),
+    category: str | None = Query(None, description="案件カテゴリでフィルタ"),
+    procedure_type: str | None = Query(None, description="入札手続きの種類でフィルタ"),
+    item_code: str | None = Query(None, description="品目分類コードでフィルタ"),
+    lg_code: str | None = Query(None, description="地方自治体コード（都道府県）でフィルタ"),
+    city_code: str | None = Query(None, description="市区町村コードでフィルタ"),
+    certification_query: str | None = Query(None, description="参加資格情報での全文検索"),
 ) -> RFPListResponse:
     """
     RFP一覧取得
@@ -52,6 +85,12 @@ async def get_rfps(
         page_size: ページサイズ（デフォルト: 20、最大: 100）
         region: 都道府県コードフィルター（オプション）
         query: タイトル・説明文での検索（オプション）
+        category: 案件カテゴリでフィルタ（オプション）
+        procedure_type: 入札手続きの種類でフィルタ（オプション）
+        item_code: 品目分類コードでフィルタ（オプション）
+        lg_code: 地方自治体コード（都道府県）でフィルタ（オプション）
+        city_code: 市区町村コードでフィルタ（オプション）
+        certification_query: 参加資格情報での全文検索（オプション）
 
     Returns:
         RFPListResponse: RFP一覧
@@ -73,9 +112,38 @@ async def get_rfps(
         # テキスト検索フィルタ（タイトルまたは説明文）
         if query:
             # PostgreSQLのILIKEを使用して部分一致検索
+            # SQLインジェクション対策：LIKE特殊文字をエスケープ
+            escaped_query = _escape_like_pattern(query)
             query_builder = query_builder.or_(
-                f"title.ilike.%{query}%,description.ilike.%{query}%"
+                f"title.ilike.%{escaped_query}%,description.ilike.%{escaped_query}%"
             )
+
+        # カテゴリフィルタ
+        if category:
+            query_builder = query_builder.eq("category", category)
+
+        # 入札手続きの種類フィルタ
+        if procedure_type:
+            query_builder = query_builder.eq("procedure_type", procedure_type)
+
+        # 品目分類コードフィルタ
+        if item_code:
+            query_builder = query_builder.eq("item_code", item_code)
+
+        # 地方自治体コード（都道府県）フィルタ
+        if lg_code:
+            query_builder = query_builder.eq("lg_code", lg_code)
+
+        # 市区町村コードフィルタ
+        if city_code:
+            query_builder = query_builder.eq("city_code", city_code)
+
+        # 参加資格情報での全文検索フィルタ
+        if certification_query:
+            # PostgreSQLのILIKEを使用して部分一致検索
+            # SQLインジェクション対策：LIKE特殊文字をエスケープ
+            escaped_cert = _escape_like_pattern(certification_query)
+            query_builder = query_builder.ilike("certification", f"%{escaped_cert}%")
 
         # ページネーション
         query_builder = query_builder.range(offset, offset + page_size - 1).order("fetched_at", desc=True)
@@ -92,7 +160,9 @@ async def get_rfps(
         total = response.count if response.count is not None else 0
 
         logger.info(
-            f"RFP一覧を取得しました: user_id={user_id}, total={total}, page={page}, page_size={page_size}"
+            f"RFP一覧を取得しました: user_id={user_id}, total={total}, page={page}, page_size={page_size}, "
+            f"region={region}, query={query}, category={category}, procedure_type={procedure_type}, "
+            f"item_code={item_code}, lg_code={lg_code}, city_code={city_code}, certification_query={certification_query}"
         )
 
         return RFPListResponse(
@@ -198,7 +268,16 @@ async def get_rfps_with_matching(
                     has_embedding,
                     created_at,
                     updated_at,
-                    fetched_at
+                    fetched_at,
+                    category,
+                    procedure_type,
+                    cft_issue_date,
+                    tender_deadline,
+                    opening_event_date,
+                    item_code,
+                    lg_code,
+                    city_code,
+                    certification
                 )
             """,
                 count="exact",
@@ -264,6 +343,16 @@ async def get_rfps_with_matching(
                 created_at=rfp_data["created_at"],
                 updated_at=rfp_data["updated_at"],
                 fetched_at=rfp_data["fetched_at"],
+                # KKJ API新規フィールド
+                category=rfp_data.get("category"),
+                procedure_type=rfp_data.get("procedure_type"),
+                cft_issue_date=rfp_data.get("cft_issue_date"),
+                tender_deadline=rfp_data.get("tender_deadline"),
+                opening_event_date=rfp_data.get("opening_event_date"),
+                item_code=rfp_data.get("item_code"),
+                lg_code=rfp_data.get("lg_code"),
+                city_code=rfp_data.get("city_code"),
+                certification=rfp_data.get("certification"),
                 # マッチング情報
                 match_score=record["match_score"],
                 must_requirements_ok=record["must_requirements_ok"],
