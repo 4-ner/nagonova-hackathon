@@ -13,6 +13,26 @@ from services.embedding import EmbeddingService
 logger = logging.getLogger(__name__)
 
 
+def _escape_like_pattern(pattern: str) -> str:
+    """
+    LIKE検索パターンの特殊文字をエスケープします。
+
+    PostgreSQLのLIKE検索で使用される特殊文字（%, _, \）を
+    エスケープして、意図しないワイルドカード検索を防ぎます。
+
+    Args:
+        pattern: エスケープ対象の検索パターン
+
+    Returns:
+        エスケープ済みの検索パターン
+    """
+    return (
+        pattern.replace("\\", "\\\\")  # バックスラッシュを最初にエスケープ
+        .replace("%", "\\%")  # %をエスケープ
+        .replace("_", "\\_")  # _をエスケープ
+    )
+
+
 class VectorSearchService:
     """
     ベクトル検索サービスクラス
@@ -214,11 +234,12 @@ class VectorSearchService:
 
         # キーワード検索を実行（PostgreSQL ILIKE）
         try:
-            # SQLインジェクション対策：Supabaseクライアントはパラメータ化されたクエリを使用
+            # SQLインジェクション対策：LIKE特殊文字をエスケープ
+            escaped_query = _escape_like_pattern(query_text)
             keyword_response = (
                 self.supabase.table("rfps")
                 .select("*")
-                .or_(f"title.ilike.%{query_text}%,description.ilike.%{query_text}%")
+                .or_(f"title.ilike.%{escaped_query}%,description.ilike.%{escaped_query}%")
                 .limit(result_limit * 2)
                 .execute()
             )
