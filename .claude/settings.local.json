@@ -44,7 +44,8 @@
       "Bash(find:*)",
       "Bash(pnpx playwright install:*)",
       "Bash(pnpm test:e2e:*)",
-      "Bash(uv pip:*)"
+      "Bash(uv pip:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
