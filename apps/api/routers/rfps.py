@@ -12,7 +12,7 @@ from fastapi.responses import PlainTextResponse
 from supabase import Client
 
 from database import get_supabase_client
-from middleware.auth import CurrentUserId
+from middleware.auth import CurrentUserId, CurrentAuthToken
 from schemas.rfp import (
     RFPResponse,
     RFPListResponse,
@@ -197,7 +197,7 @@ async def get_rfps(
 )
 async def get_rfps_with_matching(
     user_id: CurrentUserId,
-    supabase: Annotated[Client, Depends(get_supabase_client)],
+    auth_token: CurrentAuthToken,
     page: int = Query(1, ge=1, description="ページ番号"),
     page_size: int = Query(20, ge=1, le=100, description="ページサイズ"),
     min_score: int | None = Query(None, ge=0, le=100, description="最小マッチングスコア"),
@@ -213,7 +213,7 @@ async def get_rfps_with_matching(
 
     Args:
         user_id: 認証ユーザーID
-        supabase: Supabaseクライアント
+        auth_token: 認証トークン
         page: ページ番号（デフォルト: 1）
         page_size: ページサイズ（デフォルト: 20、最大: 100）
         min_score: 最小マッチングスコア（オプション）
@@ -229,6 +229,9 @@ async def get_rfps_with_matching(
         HTTPException: 会社情報が見つからない、取得エラー
     """
     try:
+        # トークン付きSupabaseクライアントを取得
+        supabase = await get_supabase_client(token=auth_token)
+
         # ユーザーの会社情報を取得
         company_response = (
             supabase.table("companies")
