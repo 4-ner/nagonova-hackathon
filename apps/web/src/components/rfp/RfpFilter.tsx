@@ -45,10 +45,10 @@ interface RfpFilterProps {
  * 締切日フィルターの選択肢
  */
 const DEADLINE_OPTIONS = [
-  { value: undefined, label: 'すべて' },
-  { value: 7, label: '7日以内' },
-  { value: 14, label: '14日以内' },
-  { value: 30, label: '30日以内' },
+  { value: 'all', label: 'すべて' },
+  { value: '7', label: '7日以内' },
+  { value: '14', label: '14日以内' },
+  { value: '30', label: '30日以内' },
 ] as const;
 
 /**
@@ -94,10 +94,10 @@ export function RfpFilter({ filters, onFilterChange }: RfpFilterProps) {
             <div className="space-y-2">
               <Label htmlFor="deadline">締切日</Label>
               <Select
-                value={filters.deadlineDays?.toString() ?? ''}
+                value={filters.deadlineDays?.toString() ?? 'all'}
                 onValueChange={(value) =>
                   updateFilter({
-                    deadlineDays: value ? parseInt(value, 10) : undefined,
+                    deadlineDays: value === 'all' ? undefined : parseInt(value, 10),
                   })
                 }
               >
@@ -108,7 +108,7 @@ export function RfpFilter({ filters, onFilterChange }: RfpFilterProps) {
                   {DEADLINE_OPTIONS.map((option) => (
                     <SelectItem
                       key={option.label}
-                      value={option.value?.toString() ?? ''}
+                      value={option.value}
                     >
                       {option.label}
                     </SelectItem>
@@ -121,16 +121,16 @@ export function RfpFilter({ filters, onFilterChange }: RfpFilterProps) {
             <div className="space-y-2">
               <Label htmlFor="region">都道府県</Label>
               <Select
-                value={filters.region ?? ''}
+                value={filters.region ?? 'all'}
                 onValueChange={(value) =>
-                  updateFilter({ region: value || undefined })
+                  updateFilter({ region: value === 'all' ? undefined : value })
                 }
               >
                 <SelectTrigger id="region">
                   <SelectValue placeholder="全国" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">全国</SelectItem>
+                  <SelectItem value="all">全国</SelectItem>
                   {PREFECTURES.map((prefecture) => (
                     <SelectItem key={prefecture.code} value={prefecture.code}>
                       {prefecture.name}
