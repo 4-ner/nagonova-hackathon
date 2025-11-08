@@ -515,3 +515,304 @@ class MatchingEngine:
         # エイリアスが見つからない場合はスキル自身のみ
         logger.debug(f"エイリアスなし: {skill}")
         return expanded
+
+    async def calculate_enhanced_match_score(
+        self,
+        company: dict[str, Any],
+        rfp: dict[str, Any],
+        company_embedding: list[float] | None = None,
+    ) -> dict[str, Any]:
+        """
+        セマンティックマッチングを含む拡張スコア計算を行います。
+
+        スコア内訳:
+        - semantic_skill_match (40%): 会社スキルとRFP説明の意味的類似度
+        - keyword_skill_match (30%): キーワードベースのスキルマッチ
+        - budget_match (10%): 予算適合度
+        - region_match (10%): 地域適合度
+        - deadline_bonus (10%): 納期ボーナス
+
+        Args:
+            company: 会社プロフィール辞書
+                - id: UUID
+                - skills: list[str] - 保有スキル配列
+                - regions: list[str] - 対応可能な都道府県コード配列
+                - budget_min: int | None - 予算下限
+                - budget_max: int | None - 予算上限
+                - ng_keywords: list[str] - NGキーワード配列
+            rfp: RFP辞書
+                - id: UUID
+                - title: str - タイトル
+                - description: str - 説明
+                - embedding: list[float] | None - RFP埋め込みベクトル
+                - budget: int | None - 予算
+                - region: str - 都道府県コード
+                - deadline: date | str - 締切日
+            company_embedding: 会社スキル埋め込みベクトル（オプション）
+
+        Returns:
+            マッチング結果辞書:
+                - score: int - 最終スコア (0~100)
+                - must_ok: bool - 必須要件を満たしているか
+                - budget_ok: bool - 予算条件を満たしているか
+                - region_ok: bool - 地域条件を満たしているか
+                - factors: dict - スコア計算要素
+                    - semantic_skill_match: float - セマンティックスキルマッチ度 (0.0~1.0)
+                    - keyword_skill_match: float - キーワードスキルマッチ度 (0.0~1.0)
+                    - must: bool - 必須要件判定
+                    - budget: float - 予算ブースト (0.0~0.1)
+                    - deadline: float - 締切ブースト (0.0~0.05)
+                    - region: float - 地域係数 (0.8 or 1.0)
+                - summary_points: list[str] - マッチング結果サマリー
+
+        Raises:
+            ValueError: 必須フィールドが不足している場合
+        """
+        # 必須フィールドチェック（既存のcalculate_matching_scoreと同じ）
+        required_company_fields = ["id", "skills", "regions"]
+        required_rfp_fields = ["id", "title", "description", "region", "deadline"]
+
+        for field in required_company_fields:
+            if field not in company:
+                raise ValueError(f"会社プロフィールに必須フィールドがありません: {field}")
+
+        for field in required_rfp_fields:
+            if field not in rfp:
+                raise ValueError(f"RFPに必須フィールドがありません: {field}")
+
+        logger.info(
+            f"拡張マッチング計算開始: company_id={company['id']}, rfp_id={rfp['id']}"
+        )
+
+        # RFP全文を作成（タイトル + 説明）
+        rfp_text = f"{rfp['title']}\n{rfp['description']}"
+
+        # NGキーワードチェック（既存ロジックを再利用）
+        ng_keywords = company.get("ng_keywords", [])
+        if ng_keywords:
+            for ng_keyword in ng_keywords:
+                if ng_keyword and ng_keyword.lower() in rfp_text.lower():
+                    logger.info(
+                        f"NGキーワードが検出されました: {ng_keyword} - スコア0を返却"
+                    )
+                    return {
+                        "score": 0,
+                        "must_ok": False,
+                        "budget_ok": False,
+                        "region_ok": False,
+                        "factors": {
+                            "semantic_skill_match": 0.0,
+                            "keyword_skill_match": 0.0,
+                            "must": False,
+                            "budget": 0.0,
+                            "deadline": 0.0,
+                            "region": 0.0,
+                        },
+                        "summary_points": [f"NGキーワード「{ng_keyword}」が含まれています"],
+                    }
+
+        # 1. セマンティックスキルマッチ度計算（40%）
+        semantic_skill_match = 0.0
+        if company_embedding and rfp.get("embedding"):
+            try:
+                # コサイン類似度を計算
+                semantic_skill_match = self._calculate_cosine_similarity(
+                    company_embedding, rfp["embedding"]
+                )
+                logger.debug(
+                    f"セマンティックスキルマッチ: {semantic_skill_match:.3f}"
+                )
+            except Exception as e:
+                logger.warning(f"セマンティックスキルマッチ計算エラー: {e}")
+                semantic_skill_match = 0.0
+
+        # 2. キーワードスキルマッチ度計算（30%）- 既存ロジックを再利用
+        keyword_skill_match = self._calculate_skill_match(company["skills"], rfp_text)
+
+        # 3. 必須要件チェック
+        must_ok = self._check_must_requirements(rfp_text)
+
+        # 4. 地域係数
+        region_coefficient = self._calculate_region_coefficient(
+            company["regions"], rfp["region"]
+        )
+
+        # 5. 予算ブースト
+        budget_boost = self._calculate_budget_boost(
+            company.get("budget_min"),
+            company.get("budget_max"),
+            rfp.get("budget"),
+        )
+
+        # 6. 締切ブースト
+        if isinstance(rfp["deadline"], str):
+            deadline_date = datetime.fromisoformat(rfp["deadline"]).date()
+        else:
+            deadline_date = rfp["deadline"]
+
+        deadline_boost = self._calculate_deadline_boost(deadline_date)
+
+        # ベーススコア計算（セマンティック40% + キーワード30% = 70%）
+        base_score = (semantic_skill_match * 40) + (keyword_skill_match * 30)
+
+        # 必須要件チェック
+        if not must_ok:
+            base_score *= 0.5  # 必須要件未達は50%減点
+
+        # 地域係数適用（10%）
+        base_score += region_coefficient * 10
+
+        # 予算ブースト適用（10%）
+        base_score += budget_boost * 100
+
+        # 締切ブースト適用（10%）
+        base_score += deadline_boost * 100
+
+        # 最終スコア（0~100に丸める）
+        final_score = min(100, max(0, int(base_score)))
+
+        # 予算条件判定
+        budget_ok = True
+        if rfp.get("budget") and company.get("budget_min") and company.get("budget_max"):
+            budget_ok = (
+                company["budget_min"] <= rfp["budget"] <= company["budget_max"]
+            )
+
+        # 地域条件判定
+        region_ok = rfp["region"] in company["regions"]
+
+        # 要素を辞書にまとめる
+        factors = {
+            "semantic_skill_match": round(semantic_skill_match, 3),
+            "keyword_skill_match": round(keyword_skill_match, 3),
+            "must": must_ok,
+            "budget": round(budget_boost, 3),
+            "deadline": round(deadline_boost, 3),
+            "region": round(region_coefficient, 3),
+        }
+
+        # サマリーポイント生成（拡張版）
+        summary_points = self._generate_enhanced_summary_points(
+            company, rfp, factors
+        )
+
+        result = {
+            "score": final_score,
+            "must_ok": must_ok,
+            "budget_ok": budget_ok,
+            "region_ok": region_ok,
+            "factors": factors,
+            "summary_points": summary_points,
+        }
+
+        logger.info(
+            f"拡張マッチング計算完了: score={final_score}, "
+            f"semantic={semantic_skill_match:.2f}, keyword={keyword_skill_match:.2f}, "
+            f"must_ok={must_ok}, budget_ok={budget_ok}, region_ok={region_ok}"
+        )
+
+        return result
+
+    def _calculate_cosine_similarity(
+        self, vec1: list[float], vec2: list[float]
+    ) -> float:
+        """
+        2つのベクトルのコサイン類似度を計算します。
+
+        Args:
+            vec1: ベクトル1
+            vec2: ベクトル2
+
+        Returns:
+            コサイン類似度（0.0~1.0）
+
+        Raises:
+            ValueError: ベクトルの次元が一致しない場合
+        """
+        if len(vec1) != len(vec2):
+            raise ValueError(
+                f"ベクトルの次元が一致しません: {len(vec1)} != {len(vec2)}"
+            )
+
+        # 内積を計算
+        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+
+        # ノルムを計算
+        norm1 = sum(a * a for a in vec1) ** 0.5
+        norm2 = sum(b * b for b in vec2) ** 0.5
+
+        # ゼロ除算を防ぐ
+        if norm1 == 0.0 or norm2 == 0.0:
+            return 0.0
+
+        # コサイン類似度
+        similarity = dot_product / (norm1 * norm2)
+
+        # 0.0~1.0の範囲にクリップ（浮動小数点誤差対策）
+        return max(0.0, min(1.0, similarity))
+
+    def _generate_enhanced_summary_points(
+        self, company: dict[str, Any], rfp: dict[str, Any], factors: dict[str, Any]
+    ) -> list[str]:
+        """
+        拡張マッチング結果のサマリーポイントを生成します。
+
+        Args:
+            company: 会社プロフィール辞書
+            rfp: RFP辞書
+            factors: スコア計算要素辞書
+
+        Returns:
+            サマリーポイントのリスト（最大3点）
+        """
+        summary_points: list[str] = []
+
+        # セマンティックスキルマッチ度
+        semantic_match_percent = int(factors["semantic_skill_match"] * 100)
+        keyword_match_percent = int(factors["keyword_skill_match"] * 100)
+
+        if semantic_match_percent >= 80:
+            summary_points.append(
+                f"AI分析スキルマッチ度 {semantic_match_percent}% (高)"
+            )
+        elif semantic_match_percent >= 50:
+            summary_points.append(
+                f"AI分析スキルマッチ度 {semantic_match_percent}% (中)"
+            )
+        elif keyword_match_percent >= 50:
+            summary_points.append(
+                f"キーワードスキルマッチ度 {keyword_match_percent}% (中)"
+            )
+        else:
+            summary_points.append("スキルマッチ度 低")
+
+        # 予算条件
+        if rfp.get("budget") and company.get("budget_min") and company.get("budget_max"):
+            if company["budget_min"] <= rfp["budget"] <= company["budget_max"]:
+                summary_points.append("予算範囲内")
+            else:
+                summary_points.append("予算範囲外")
+
+        # 地域条件
+        if rfp["region"] in company["regions"]:
+            summary_points.append("対応可能地域")
+        else:
+            summary_points.append("対応不可地域")
+
+        # 締切情報
+        if isinstance(rfp["deadline"], str):
+            deadline_date = datetime.fromisoformat(rfp["deadline"]).date()
+        else:
+            deadline_date = rfp["deadline"]
+
+        days_until_deadline = (deadline_date - date.today()).days
+
+        if days_until_deadline < 0:
+            summary_points.append("締切超過")
+        elif days_until_deadline <= 7:
+            summary_points.append(f"締切まで{days_until_deadline}日（緊急）")
+        elif days_until_deadline <= 30:
+            summary_points.append(f"締切まで{days_until_deadline}日")
+
+        # 最大3点に制限
+        return summary_points[:3]
