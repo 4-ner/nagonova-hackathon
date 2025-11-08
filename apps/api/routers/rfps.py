@@ -20,8 +20,15 @@ from schemas.rfp import (
     RFPWithMatchingListResponse,
     IngestRequest,
     IngestResponse,
+    SemanticSearchRequest,
+    SemanticSearchResponse,
+    SemanticSearchResultItem,
+    SimilarRFPsResponse,
 )
+from services.embedding import EmbeddingService
+from services.matching_engine import MatchingEngine
 from services.proposal_generator import ProposalGenerator
+from services.vector_search import VectorSearchService
 
 logger = logging.getLogger(__name__)
 
@@ -603,4 +610,457 @@ async def generate_proposal_draft(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="提案書ドラフトの生成に失敗しました",
+        )
+
+
+@router.post(
+    "/rfps/semantic-search",
+    response_model=SemanticSearchResponse,
+    summary="セマンティック検索",
+    description="テキストクエリからセマンティック検索を実行し、類似RFPを取得します。",
+)
+async def semantic_search_rfps(
+    search_data: SemanticSearchRequest,
+    user_id: CurrentUserId,
+    supabase: Annotated[Client, Depends(get_supabase_client)],
+) -> SemanticSearchResponse:
+    """
+    セマンティック検索
+
+    テキストクエリから埋め込みベクトルを生成し、類似度の高いRFPを検索します。
+    `include_match_factors=True`の場合は、会社プロフィールを取得して拡張マッチングスコアを計算します。
+
+    Args:
+        search_data: セマンティック検索リクエストデータ
+        user_id: 認証ユーザーID
+        supabase: Supabaseクライアント
+
+    Returns:
+        SemanticSearchResponse: セマンティック検索結果
+
+    Raises:
+        HTTPException: 検索エラー
+    """
+    try:
+        logger.info(
+            f"セマンティック検索開始: user_id={user_id}, query_length={len(search_data.query)}, "
+            f"threshold={search_data.similarity_threshold}, limit={search_data.result_limit}, "
+            f"include_match_factors={search_data.include_match_factors}"
+        )
+
+        # EmbeddingServiceとVectorSearchServiceを初期化
+        embedding_service = EmbeddingService()
+        vector_search_service = VectorSearchService(supabase, embedding_service)
+
+        # セマンティック検索を実行
+        try:
+            results = await vector_search_service.search_similar_rfps(
+                query_text=search_data.query,
+                similarity_threshold=search_data.similarity_threshold,
+                result_limit=search_data.result_limit,
+            )
+        except Exception as e:
+            logger.error(f"セマンティック検索エラー（キーワード検索へフォールバック）: {e}")
+            # セマンティック検索失敗時はキーワード検索にフォールバック
+            escaped_query = _escape_like_pattern(search_data.query)
+            fallback_response = (
+                supabase.table("rfps")
+                .select("*")
+                .or_(f"title.ilike.%{escaped_query}%,description.ilike.%{escaped_query}%")
+                .limit(search_data.result_limit)
+                .execute()
+            )
+            # similarity_scoreを付与（キーワード検索の場合は0.5）
+            results = [
+                {**rfp, "similarity_score": 0.5}
+                for rfp in (fallback_response.data or [])
+            ]
+
+        # 拡張マッチングスコアの計算が必要な場合
+        company = None
+        company_embedding = None
+        matching_engine = None
+
+        if search_data.include_match_factors:
+            # ユーザーの会社情報を取得
+            company_response = (
+                supabase.table("companies")
+                .select("*")
+                .eq("user_id", user_id)
+                .maybe_single()
+                .execute()
+            )
+
+            if company_response.data:
+                company = company_response.data
+
+                # 会社スキル埋め込みベクトルを取得
+                embedding_response = (
+                    supabase.table("company_skill_embeddings")
+                    .select("embedding")
+                    .eq("company_id", company["id"])
+                    .order("updated_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+
+                if embedding_response.data and len(embedding_response.data) > 0:
+                    company_embedding = embedding_response.data[0].get("embedding")
+
+                # MatchingEngineを初期化
+                matching_engine = MatchingEngine(supabase, embedding_service)
+
+        # レスポンスアイテムを整形
+        items = []
+        for rfp_data in results:
+            # 基本RFP情報
+            item_dict = {
+                "id": rfp_data["id"],
+                "external_id": rfp_data["external_id"],
+                "title": rfp_data["title"],
+                "issuing_org": rfp_data["issuing_org"],
+                "description": rfp_data["description"],
+                "budget": rfp_data.get("budget"),
+                "region": rfp_data["region"],
+                "deadline": rfp_data["deadline"],
+                "url": rfp_data.get("url"),
+                "external_doc_urls": rfp_data.get("external_doc_urls", []),
+                "has_embedding": rfp_data.get("embedding") is not None,
+                "created_at": rfp_data["created_at"],
+                "updated_at": rfp_data["updated_at"],
+                "fetched_at": rfp_data["fetched_at"],
+                "category": rfp_data.get("category"),
+                "procedure_type": rfp_data.get("procedure_type"),
+                "cft_issue_date": rfp_data.get("cft_issue_date"),
+                "tender_deadline": rfp_data.get("tender_deadline"),
+                "opening_event_date": rfp_data.get("opening_event_date"),
+                "item_code": rfp_data.get("item_code"),
+                "lg_code": rfp_data.get("lg_code"),
+                "city_code": rfp_data.get("city_code"),
+                "certification": rfp_data.get("certification"),
+                "similarity_score": rfp_data.get("similarity_score", 0.0),
+            }
+
+            # 拡張マッチング情報を計算
+            if company and matching_engine:
+                try:
+                    match_result = await matching_engine.calculate_enhanced_match_score(
+                        company=company,
+                        rfp=rfp_data,
+                        company_embedding=company_embedding,
+                    )
+                    item_dict["match_score"] = match_result["score"]
+                    item_dict["match_factors"] = match_result["factors"]
+                    item_dict["summary_points"] = match_result["summary_points"]
+                except Exception as e:
+                    logger.warning(f"拡張マッチングスコア計算エラー（RFP ID={rfp_data['id']}）: {e}")
+                    item_dict["match_score"] = None
+                    item_dict["match_factors"] = None
+                    item_dict["summary_points"] = []
+            else:
+                item_dict["match_score"] = None
+                item_dict["match_factors"] = None
+                item_dict["summary_points"] = []
+
+            items.append(SemanticSearchResultItem(**item_dict))
+
+        logger.info(
+            f"セマンティック検索完了: user_id={user_id}, total={len(items)}, "
+            f"query={search_data.query}"
+        )
+
+        return SemanticSearchResponse(
+            total=len(items),
+            items=items,
+            query=search_data.query,
+            similarity_threshold=search_data.similarity_threshold,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"セマンティック検索エラー: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="セマンティック検索に失敗しました",
+        )
+
+
+@router.get(
+    "/rfps/{rfp_id}/find-similar",
+    response_model=SimilarRFPsResponse,
+    summary="類似RFP検索",
+    description="指定されたRFPと類似する案件を検索します。",
+)
+async def find_similar_rfps(
+    rfp_id: str,
+    user_id: CurrentUserId,
+    supabase: Annotated[Client, Depends(get_supabase_client)],
+    limit: int = Query(10, ge=1, le=50, description="返却する最大件数"),
+) -> SimilarRFPsResponse:
+    """
+    類似RFP検索
+
+    指定されたRFP IDと埋め込みベクトルが類似するRFPを検索します。
+
+    Args:
+        rfp_id: 基準となるRFP ID
+        user_id: 認証ユーザーID
+        supabase: Supabaseクライアント
+        limit: 返却する最大件数（デフォルト: 10、最大: 50）
+
+    Returns:
+        SimilarRFPsResponse: 類似RFP検索結果
+
+    Raises:
+        HTTPException: RFPが存在しない、検索エラー
+    """
+    try:
+        logger.info(
+            f"類似RFP検索開始: user_id={user_id}, rfp_id={rfp_id}, limit={limit}"
+        )
+
+        # EmbeddingServiceとVectorSearchServiceを初期化
+        embedding_service = EmbeddingService()
+        vector_search_service = VectorSearchService(supabase, embedding_service)
+
+        # 類似RFP検索を実行
+        try:
+            results = await vector_search_service.find_similar_to_rfp(
+                rfp_id=rfp_id,
+                result_limit=limit,
+            )
+        except ValueError as e:
+            # RFP IDが見つからない場合
+            logger.info(f"類似RFP検索エラー: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            )
+
+        # レスポンスアイテムを整形
+        items = []
+        for rfp_data in results:
+            item_dict = {
+                "id": rfp_data["id"],
+                "external_id": rfp_data["external_id"],
+                "title": rfp_data["title"],
+                "issuing_org": rfp_data["issuing_org"],
+                "description": rfp_data["description"],
+                "budget": rfp_data.get("budget"),
+                "region": rfp_data["region"],
+                "deadline": rfp_data["deadline"],
+                "url": rfp_data.get("url"),
+                "external_doc_urls": rfp_data.get("external_doc_urls", []),
+                "has_embedding": rfp_data.get("embedding") is not None,
+                "created_at": rfp_data["created_at"],
+                "updated_at": rfp_data["updated_at"],
+                "fetched_at": rfp_data["fetched_at"],
+                "category": rfp_data.get("category"),
+                "procedure_type": rfp_data.get("procedure_type"),
+                "cft_issue_date": rfp_data.get("cft_issue_date"),
+                "tender_deadline": rfp_data.get("tender_deadline"),
+                "opening_event_date": rfp_data.get("opening_event_date"),
+                "item_code": rfp_data.get("item_code"),
+                "lg_code": rfp_data.get("lg_code"),
+                "city_code": rfp_data.get("city_code"),
+                "certification": rfp_data.get("certification"),
+                "similarity_score": rfp_data.get("similarity_score", 0.0),
+                "match_score": None,
+                "match_factors": None,
+                "summary_points": [],
+            }
+
+            items.append(SemanticSearchResultItem(**item_dict))
+
+        logger.info(
+            f"類似RFP検索完了: user_id={user_id}, rfp_id={rfp_id}, total={len(items)}"
+        )
+
+        return SimilarRFPsResponse(
+            rfp_id=rfp_id,
+            similar_rfps=items,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"類似RFP検索エラー: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="類似RFP検索に失敗しました",
+        )
+
+
+@router.get(
+    "/rfps/with-enhanced-matching",
+    response_model=RFPWithMatchingListResponse,
+    summary="拡張マッチングスコア付きRFP一覧を取得",
+    description="セマンティック検索を含む拡張マッチングスコア付きでRFP一覧を取得します。",
+)
+async def get_rfps_with_enhanced_matching(
+    user_id: CurrentUserId,
+    supabase: Annotated[Client, Depends(get_supabase_client)],
+    page: int = Query(1, ge=1, description="ページ番号"),
+    page_size: int = Query(20, ge=1, le=100, description="ページサイズ"),
+    min_score: int | None = Query(None, ge=0, le=100, description="最小マッチングスコア"),
+) -> RFPWithMatchingListResponse:
+    """
+    拡張マッチングスコア付きRFP一覧取得
+
+    ログインユーザーの会社情報に基づき、セマンティックマッチングを含む
+    拡張スコアを計算してRFP一覧を返します。
+
+    Args:
+        user_id: 認証ユーザーID
+        supabase: Supabaseクライアント
+        page: ページ番号（デフォルト: 1）
+        page_size: ページサイズ（デフォルト: 20、最大: 100）
+        min_score: 最小マッチングスコア（オプション）
+
+    Returns:
+        RFPWithMatchingListResponse: 拡張マッチングスコア付きRFP一覧
+
+    Raises:
+        HTTPException: 会社情報が見つからない、取得エラー
+    """
+    try:
+        logger.info(
+            f"拡張マッチングスコア付きRFP一覧取得開始: user_id={user_id}, "
+            f"page={page}, page_size={page_size}, min_score={min_score}"
+        )
+
+        # ユーザーの会社情報を取得
+        company_response = (
+            supabase.table("companies")
+            .select("*")
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+
+        if not company_response.data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="会社情報が見つかりません。先にプロフィールを登録してください。",
+            )
+
+        company = company_response.data
+
+        # 会社スキル埋め込みベクトルを取得
+        embedding_response = (
+            supabase.table("company_skill_embeddings")
+            .select("embedding")
+            .eq("company_id", company["id"])
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        company_embedding = None
+        if embedding_response.data and len(embedding_response.data) > 0:
+            company_embedding = embedding_response.data[0].get("embedding")
+
+        # EmbeddingServiceとMatchingEngineを初期化
+        embedding_service = EmbeddingService()
+        matching_engine = MatchingEngine(supabase, embedding_service)
+
+        # オフセット計算
+        offset = (page - 1) * page_size
+
+        # RFP一覧を取得（埋め込みベクトルが存在するもののみ）
+        query_builder = (
+            supabase.table("rfps")
+            .select("*", count="exact")
+            .is_("embedding", "not.null")
+            .order("fetched_at", desc=True)
+            .range(offset, offset + page_size - 1)
+        )
+
+        rfp_response = query_builder.execute()
+
+        # 各RFPの拡張マッチングスコアを計算
+        items = []
+        for rfp in rfp_response.data or []:
+            try:
+                # 拡張マッチングスコアを計算
+                match_result = await matching_engine.calculate_enhanced_match_score(
+                    company=company,
+                    rfp=rfp,
+                    company_embedding=company_embedding,
+                )
+
+                # min_scoreフィルタ
+                if min_score is not None and match_result["score"] < min_score:
+                    continue
+
+                # RFPWithMatchingResponseを作成
+                item = RFPWithMatchingResponse(
+                    # RFP基本情報
+                    id=rfp["id"],
+                    external_id=rfp["external_id"],
+                    title=rfp["title"],
+                    issuing_org=rfp["issuing_org"],
+                    description=rfp["description"],
+                    budget=rfp.get("budget"),
+                    region=rfp["region"],
+                    deadline=rfp["deadline"],
+                    url=rfp.get("url"),
+                    external_doc_urls=rfp.get("external_doc_urls", []),
+                    has_embedding=True,
+                    created_at=rfp["created_at"],
+                    updated_at=rfp["updated_at"],
+                    fetched_at=rfp["fetched_at"],
+                    category=rfp.get("category"),
+                    procedure_type=rfp.get("procedure_type"),
+                    cft_issue_date=rfp.get("cft_issue_date"),
+                    tender_deadline=rfp.get("tender_deadline"),
+                    opening_event_date=rfp.get("opening_event_date"),
+                    item_code=rfp.get("item_code"),
+                    lg_code=rfp.get("lg_code"),
+                    city_code=rfp.get("city_code"),
+                    certification=rfp.get("certification"),
+                    # マッチング情報
+                    match_score=match_result["score"],
+                    must_requirements_ok=match_result["must_ok"],
+                    budget_match_ok=match_result["budget_ok"],
+                    region_match_ok=match_result["region_ok"],
+                    match_factors=match_result["factors"],
+                    summary_points=match_result["summary_points"],
+                    match_calculated_at=datetime.now(),
+                )
+
+                items.append(item)
+
+            except Exception as e:
+                logger.warning(f"拡張マッチングスコア計算エラー（RFP ID={rfp['id']}）: {e}")
+                continue
+
+        # スコア降順でソート
+        items.sort(key=lambda x: x.match_score if x.match_score is not None else 0, reverse=True)
+
+        # ページサイズに合わせてトリミング
+        items = items[:page_size]
+
+        total = len(items)
+
+        logger.info(
+            f"拡張マッチングスコア付きRFP一覧を取得しました: user_id={user_id}, "
+            f"total={total}, page={page}, page_size={page_size}, min_score={min_score}"
+        )
+
+        return RFPWithMatchingListResponse(
+            total=total,
+            items=items,
+            page=page,
+            page_size=page_size,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"拡張マッチングスコア付きRFP一覧取得エラー: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="拡張マッチングスコア付きRFP一覧の取得に失敗しました",
         )
