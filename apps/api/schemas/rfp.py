@@ -19,6 +19,17 @@ class RFPBase(BaseModel):
     url: str | None = Field(None, description="RFP URL")
     external_doc_urls: list[str] = Field(default_factory=list, description="外部ドキュメントURL配列")
 
+    # KKJ API新規フィールド（2025-11-08追加）
+    category: str | None = Field(None, description="案件カテゴリ")
+    procedure_type: str | None = Field(None, description="入札手続きの種類")
+    cft_issue_date: datetime | None = Field(None, description="仕様書発行日")
+    tender_deadline: datetime | None = Field(None, description="入札締切日時")
+    opening_event_date: datetime | None = Field(None, description="開札日時")
+    item_code: str | None = Field(None, description="品目分類コード")
+    lg_code: str | None = Field(None, description="地方自治体コード")
+    city_code: str | None = Field(None, description="市区町村コード")
+    certification: str | None = Field(None, description="参加資格情報")
+
 
 class RFPResponse(RFPBase):
     """RFPレスポンススキーマ"""

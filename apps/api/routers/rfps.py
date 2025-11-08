@@ -41,6 +41,12 @@ async def get_rfps(
     page_size: int = Query(20, ge=1, le=100, description="ページサイズ"),
     region: str | None = Query(None, description="都道府県コードフィルター"),
     query: str | None = Query(None, description="タイトル・説明文での検索"),
+    category: str | None = Query(None, description="案件カテゴリでフィルタ"),
+    procedure_type: str | None = Query(None, description="入札手続きの種類でフィルタ"),
+    item_code: str | None = Query(None, description="品目分類コードでフィルタ"),
+    lg_code: str | None = Query(None, description="地方自治体コード（都道府県）でフィルタ"),
+    city_code: str | None = Query(None, description="市区町村コードでフィルタ"),
+    certification_query: str | None = Query(None, description="参加資格情報での全文検索"),
 ) -> RFPListResponse:
     """
     RFP一覧取得
@@ -52,6 +58,12 @@ async def get_rfps(
         page_size: ページサイズ（デフォルト: 20、最大: 100）
         region: 都道府県コードフィルター（オプション）
         query: タイトル・説明文での検索（オプション）
+        category: 案件カテゴリでフィルタ（オプション）
+        procedure_type: 入札手続きの種類でフィルタ（オプション）
+        item_code: 品目分類コードでフィルタ（オプション）
+        lg_code: 地方自治体コード（都道府県）でフィルタ（オプション）
+        city_code: 市区町村コードでフィルタ（オプション）
+        certification_query: 参加資格情報での全文検索（オプション）
 
     Returns:
         RFPListResponse: RFP一覧
@@ -77,6 +89,31 @@ async def get_rfps(
                 f"title.ilike.%{query}%,description.ilike.%{query}%"
             )
 
+        # カテゴリフィルタ
+        if category:
+            query_builder = query_builder.eq("category", category)
+
+        # 入札手続きの種類フィルタ
+        if procedure_type:
+            query_builder = query_builder.eq("procedure_type", procedure_type)
+
+        # 品目分類コードフィルタ
+        if item_code:
+            query_builder = query_builder.eq("item_code", item_code)
+
+        # 地方自治体コード（都道府県）フィルタ
+        if lg_code:
+            query_builder = query_builder.eq("lg_code", lg_code)
+
+        # 市区町村コードフィルタ
+        if city_code:
+            query_builder = query_builder.eq("city_code", city_code)
+
+        # 参加資格情報での全文検索フィルタ
+        if certification_query:
+            # PostgreSQLのILIKEを使用して部分一致検索
+            query_builder = query_builder.ilike("certification", f"%{certification_query}%")
+
         # ページネーション
         query_builder = query_builder.range(offset, offset + page_size - 1).order("fetched_at", desc=True)
 
@@ -92,7 +129,9 @@ async def get_rfps(
         total = response.count if response.count is not None else 0
 
         logger.info(
-            f"RFP一覧を取得しました: user_id={user_id}, total={total}, page={page}, page_size={page_size}"
+            f"RFP一覧を取得しました: user_id={user_id}, total={total}, page={page}, page_size={page_size}, "
+            f"region={region}, query={query}, category={category}, procedure_type={procedure_type}, "
+            f"item_code={item_code}, lg_code={lg_code}, city_code={city_code}, certification_query={certification_query}"
         )
 
         return RFPListResponse(
