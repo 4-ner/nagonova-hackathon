@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MatchScore } from './MatchScore';
+import { BookmarkButton } from '@/features/bookmarks/components/BookmarkButton';
 import type { RFPWithMatching } from '@/types/rfp';
 
 interface RfpCardProps {
@@ -77,25 +78,30 @@ export function RfpCard({ rfp, showMatchScore = false }: RfpCardProps) {
             </CardDescription>
           </div>
 
-          {/* 外部リンク */}
-          {rfp.url && (
-            <Button
-              variant="outline"
-              size="sm"
-              asChild
-              className="shrink-0"
-            >
-              <a
-                href={rfp.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1"
+          {/* アクションボタン */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* ブックマークボタン */}
+            <BookmarkButton rfpId={rfp.id} size="sm" variant="ghost" iconOnly />
+
+            {/* 外部リンク */}
+            {rfp.url && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
               >
-                <ExternalLink className="h-4 w-4" />
-                詳細
-              </a>
-            </Button>
-          )}
+                <a
+                  href={rfp.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  詳細
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* マッチングスコア */}
@@ -111,6 +117,33 @@ export function RfpCard({ rfp, showMatchScore = false }: RfpCardProps) {
         <p className="text-sm text-muted-foreground leading-relaxed">
           {truncateDescription(rfp.description)}
         </p>
+
+        {/* 要約ポイントのプレビュー */}
+        {showMatchScore &&
+          rfp.summary_points &&
+          rfp.summary_points.length > 0 && (
+            <div className="pt-2 border-t">
+              <h4 className="text-xs font-semibold text-muted-foreground mb-2">
+                マッチングポイント
+              </h4>
+              <ul className="space-y-1.5">
+                {rfp.summary_points.slice(0, 3).map((point, index) => (
+                  <li
+                    key={index}
+                    className="flex items-start gap-2 text-xs text-muted-foreground"
+                  >
+                    <span className="text-primary mt-0.5 shrink-0">•</span>
+                    <span className="line-clamp-2">{point}</span>
+                  </li>
+                ))}
+              </ul>
+              {rfp.summary_points.length > 3 && (
+                <p className="mt-2 text-xs text-muted-foreground/70">
+                  他{rfp.summary_points.length - 3}件
+                </p>
+              )}
+            </div>
+          )}
 
         {/* メタ情報 */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">

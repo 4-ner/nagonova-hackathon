@@ -25,7 +25,17 @@
       "Bash(pnpm build:*)",
       "Bash(ls:*)",
       "Bash(curl:*)",
-      "mcp__notionApi__API-patch-page"
+      "mcp__notionApi__API-patch-page",
+      "Bash(pnpm run lint)",
+      "Bash(pnpx eslint:*)",
+      "Bash(pnpx tsc:*)",
+      "Bash(timeout 60 pnpm run build:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(cat:*)",
+      "Bash(uv pip install:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm add:*)"
     ],
     "deny": [],
     "ask": []

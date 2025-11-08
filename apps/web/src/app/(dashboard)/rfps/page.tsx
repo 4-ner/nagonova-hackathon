@@ -4,10 +4,9 @@ import { useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { RfpCard } from '@/components/rfp/RfpCard';
+import { RfpFilter, type RfpFilterState } from '@/components/rfp/RfpFilter';
 import { useRfpsWithMatching } from '@/hooks/useRfps';
 
 /**
@@ -17,8 +16,14 @@ import { useRfpsWithMatching } from '@/hooks/useRfps';
  */
 export default function RfpsPage() {
   const [page, setPage] = useState(1);
-  const [minScore, setMinScore] = useState<number | undefined>(undefined);
-  const [mustRequirementsOnly, setMustRequirementsOnly] = useState(false);
+  const [filters, setFilters] = useState<RfpFilterState>({
+    minScore: undefined,
+    mustRequirementsOnly: false,
+    deadlineDays: undefined,
+    region: undefined,
+    budgetMin: undefined,
+    budgetMax: undefined,
+  });
 
   const pageSize = 20;
 
@@ -26,19 +31,28 @@ export default function RfpsPage() {
   const { data, error, isLoading } = useRfpsWithMatching({
     page,
     page_size: pageSize,
-    min_score: minScore,
-    must_requirements_only: mustRequirementsOnly,
+    min_score: filters.minScore,
+    must_requirements_only: filters.mustRequirementsOnly,
+    deadline_days: filters.deadlineDays,
+    region: filters.region,
+    budget_min: filters.budgetMin,
+    budget_max: filters.budgetMax,
   });
 
-  // フィルタをリセット
-  const handleResetFilters = () => {
-    setMinScore(undefined);
-    setMustRequirementsOnly(false);
-    setPage(1);
+  // フィルタ変更時のハンドラー
+  const handleFilterChange = (newFilters: RfpFilterState) => {
+    setFilters(newFilters);
+    setPage(1); // フィルター変更時は1ページ目に戻る
   };
 
   // フィルタが適用されているか
-  const hasFilters = minScore !== undefined || mustRequirementsOnly;
+  const hasFilters =
+    filters.minScore !== undefined ||
+    filters.mustRequirementsOnly ||
+    filters.deadlineDays !== undefined ||
+    filters.region !== undefined ||
+    filters.budgetMin !== undefined ||
+    filters.budgetMax !== undefined;
 
   // ページネーション
   const totalPages = data ? Math.ceil(data.total / pageSize) : 0;
@@ -56,57 +70,9 @@ export default function RfpsPage() {
       </div>
 
       {/* フィルター */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            {/* 最小スコア */}
-            <div className="space-y-2">
-              <Label htmlFor="minScore">最小マッチングスコア</Label>
-              <Input
-                id="minScore"
-                type="number"
-                min={0}
-                max={100}
-                placeholder="例: 50"
-                value={minScore ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setMinScore(value ? parseInt(value, 10) : undefined);
-                  setPage(1);
-                }}
-              />
-            </div>
-
-            {/* 必須要件のみ */}
-            <div className="flex items-center gap-2">
-              <input
-                id="mustRequirementsOnly"
-                type="checkbox"
-                checked={mustRequirementsOnly}
-                onChange={(e) => {
-                  setMustRequirementsOnly(e.target.checked);
-                  setPage(1);
-                }}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              <Label htmlFor="mustRequirementsOnly" className="cursor-pointer">
-                必須要件を満たす案件のみ
-              </Label>
-            </div>
-
-            {/* フィルターリセット */}
-            {hasFilters && (
-              <Button
-                variant="outline"
-                onClick={handleResetFilters}
-                className="w-full md:w-auto"
-              >
-                フィルターをリセット
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="mb-6">
+        <RfpFilter filters={filters} onFilterChange={handleFilterChange} />
+      </div>
 
       {/* 読み込み中 */}
       {isLoading && (
@@ -161,15 +127,6 @@ export default function RfpsPage() {
                 <p className="text-muted-foreground">
                   条件に一致する案件が見つかりませんでした
                 </p>
-                {hasFilters && (
-                  <Button
-                    variant="link"
-                    onClick={handleResetFilters}
-                    className="mt-2"
-                  >
-                    フィルターをリセット
-                  </Button>
-                )}
               </CardContent>
             </Card>
           )}
