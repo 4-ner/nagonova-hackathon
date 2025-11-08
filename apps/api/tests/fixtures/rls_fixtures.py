@@ -117,10 +117,20 @@ def test_user_1(supabase_anon_client: Client, supabase_service_client: Client) -
         # クリーンアップ: Service Roleでユーザーを削除
         if user and user.user_id:
             try:
-                # 関連データを削除（カスケード削除が効かない場合に備えて）
-                supabase_service_client.table("companies").delete().eq("user_id", user.user_id).execute()
-                supabase_service_client.table("bookmarks").delete().eq("user_id", user.user_id).execute()
+                # 会社IDを取得
+                company_response = supabase_service_client.table("companies").select("id").eq("user_id", user.user_id).execute()
+                company_id = company_response.data[0]["id"] if company_response.data else None
+
+                # 関連データを削除（外部キー制約のある順序で削除）
+                if company_id:
+                    # company_idを参照するテーブルを先に削除
+                    supabase_service_client.table("company_skill_embeddings").delete().eq("company_id", company_id).execute()
+                    supabase_service_client.table("company_documents").delete().eq("company_id", company_id).execute()
+
+                # user_idを参照するテーブルを削除
                 supabase_service_client.table("match_snapshots").delete().eq("user_id", user.user_id).execute()
+                supabase_service_client.table("bookmarks").delete().eq("user_id", user.user_id).execute()
+                supabase_service_client.table("companies").delete().eq("user_id", user.user_id).execute()
 
                 # ユーザーを削除（Supabase Admin APIを使用）
                 supabase_service_client.auth.admin.delete_user(user.user_id)
@@ -166,10 +176,20 @@ def test_user_2(supabase_anon_client: Client, supabase_service_client: Client) -
         # クリーンアップ: Service Roleでユーザーを削除
         if user and user.user_id:
             try:
-                # 関連データを削除
-                supabase_service_client.table("companies").delete().eq("user_id", user.user_id).execute()
-                supabase_service_client.table("bookmarks").delete().eq("user_id", user.user_id).execute()
+                # 会社IDを取得
+                company_response = supabase_service_client.table("companies").select("id").eq("user_id", user.user_id).execute()
+                company_id = company_response.data[0]["id"] if company_response.data else None
+
+                # 関連データを削除（外部キー制約のある順序で削除）
+                if company_id:
+                    # company_idを参照するテーブルを先に削除
+                    supabase_service_client.table("company_skill_embeddings").delete().eq("company_id", company_id).execute()
+                    supabase_service_client.table("company_documents").delete().eq("company_id", company_id).execute()
+
+                # user_idを参照するテーブルを削除
                 supabase_service_client.table("match_snapshots").delete().eq("user_id", user.user_id).execute()
+                supabase_service_client.table("bookmarks").delete().eq("user_id", user.user_id).execute()
+                supabase_service_client.table("companies").delete().eq("user_id", user.user_id).execute()
 
                 # ユーザーを削除
                 supabase_service_client.auth.admin.delete_user(user.user_id)

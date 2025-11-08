@@ -8,12 +8,31 @@ import { createClient } from '@supabase/supabase-js';
  */
 
 // 環境変数からSupabase設定を取得
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// 必須環境変数のチェック
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error(
+    'E2Eテストの実行には以下の環境変数が必要です:\n' +
+    '- NEXT_PUBLIC_SUPABASE_URL\n' +
+    '- NEXT_PUBLIC_SUPABASE_ANON_KEY'
+  );
+}
 
 // テストユーザーの認証情報（環境変数から取得）
-const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL || 'test@example.com';
-const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD || 'test-password-123';
+const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL;
+const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD;
+
+// テストユーザー認証情報のチェック
+if (!TEST_USER_EMAIL || !TEST_USER_PASSWORD) {
+  throw new Error(
+    'E2Eテストの実行には以下の環境変数が必要です:\n' +
+    '- E2E_TEST_USER_EMAIL\n' +
+    '- E2E_TEST_USER_PASSWORD\n' +
+    '詳細は apps/web/e2e/README.md を参照してください。'
+  );
+}
 
 /**
  * 認証済みユーザーとしてログイン
