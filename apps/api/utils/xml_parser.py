@@ -2,9 +2,15 @@
 KKJ API XMLパーサー
 
 KKJ APIのXMLレスポンスから添付ファイルURLを抽出します。
+
+セキュリティ対策:
+- defusedxmlを使用してXXE（XML External Entity）攻撃を防止
+- OWASP XXE Prevention Cheat Sheet準拠
+- CWE-611対策
 """
 
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
+from defusedxml.common import EntitiesForbidden
 from typing import List
 
 
@@ -72,6 +78,11 @@ def extract_attachment_urls(xml_content: str) -> List[str]:
                 urls.append(url_element.text.strip())
 
         return urls
+
+    except EntitiesForbidden:
+        # XXE攻撃を検出した場合は空リストを返す
+        # セキュリティ上、攻撃の詳細はログに記録しない
+        return []
 
     except ET.ParseError:
         # XMLパースエラーの場合は空リストを返す

