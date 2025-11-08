@@ -49,13 +49,22 @@ class SupabaseClient:
         return cls._service_client
 
 
-async def get_supabase_client() -> Client:
+async def get_supabase_client(token: str | None = None) -> Client:
     """
     FastAPIの依存性注入用のSupabaseクライアント取得関数
 
+    Args:
+        token: JWTトークン（オプション）
+
     Returns:
-        Client: Supabase匿名キークライアント
+        Client: Supabaseクライアント
     """
+    if token:
+        # トークンが提供された場合、新しいクライアントを作成してトークンを設定
+        client = create_client(settings.supabase_url, settings.supabase_anon_key)
+        # postgrest-pyのヘッダー設定
+        client.postgrest.auth(token)
+        return client
     return SupabaseClient.get_anon_client()
 
 

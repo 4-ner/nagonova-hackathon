@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 
 from database import get_supabase_client
-from middleware.auth import CurrentUserId
+from middleware.auth import CurrentUserId, CurrentAuthToken
 from schemas.company import CompanyCreate, CompanyUpdate, CompanyResponse
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ router = APIRouter()
 async def create_company(
     company_data: CompanyCreate,
     user_id: CurrentUserId,
-    supabase: Annotated[Client, Depends(get_supabase_client)],
+    auth_token: CurrentAuthToken,
 ) -> CompanyResponse:
     """
     会社プロフィール作成
@@ -37,7 +37,7 @@ async def create_company(
     Args:
         company_data: 会社作成データ
         user_id: 認証ユーザーID
-        supabase: Supabaseクライアント
+        auth_token: 認証トークン
 
     Returns:
         CompanyResponse: 作成された会社情報
@@ -46,6 +46,9 @@ async def create_company(
         HTTPException: 既に会社が存在する場合や作成エラー
     """
     try:
+        # トークン付きSupabaseクライアントを取得
+        supabase = await get_supabase_client(token=auth_token)
+
         # 既存の会社があるかチェック
         existing = supabase.table("companies").select("id").eq("user_id", user_id).execute()
 
@@ -94,14 +97,14 @@ async def create_company(
 )
 async def get_my_company(
     user_id: CurrentUserId,
-    supabase: Annotated[Client, Depends(get_supabase_client)],
+    auth_token: CurrentAuthToken,
 ) -> CompanyResponse:
     """
     自分の会社情報取得
 
     Args:
         user_id: 認証ユーザーID
-        supabase: Supabaseクライアント
+        auth_token: 認証トークン
 
     Returns:
         CompanyResponse: 会社情報
@@ -110,6 +113,8 @@ async def get_my_company(
         HTTPException: 会社が存在しない場合や取得エラー
     """
     try:
+        # トークン付きSupabaseクライアントを取得
+        supabase = await get_supabase_client(token=auth_token)
         response = supabase.table("companies").select("*").eq("user_id", user_id).execute()
 
         if not response.data:
@@ -143,7 +148,7 @@ async def get_my_company(
 async def update_my_company(
     company_data: CompanyUpdate,
     user_id: CurrentUserId,
-    supabase: Annotated[Client, Depends(get_supabase_client)],
+    auth_token: CurrentAuthToken,
 ) -> CompanyResponse:
     """
     会社情報更新
@@ -151,7 +156,7 @@ async def update_my_company(
     Args:
         company_data: 会社更新データ
         user_id: 認証ユーザーID
-        supabase: Supabaseクライアント
+        auth_token: 認証トークン
 
     Returns:
         CompanyResponse: 更新された会社情報
@@ -160,6 +165,9 @@ async def update_my_company(
         HTTPException: 会社が存在しない場合や更新エラー
     """
     try:
+        # トークン付きSupabaseクライアントを取得
+        supabase = await get_supabase_client(token=auth_token)
+
         # 会社が存在するかチェック
         existing = supabase.table("companies").select("id").eq("user_id", user_id).execute()
 
@@ -221,19 +229,22 @@ async def update_my_company(
 )
 async def delete_my_company(
     user_id: CurrentUserId,
-    supabase: Annotated[Client, Depends(get_supabase_client)],
+    auth_token: CurrentAuthToken,
 ) -> None:
     """
     会社情報削除
 
     Args:
         user_id: 認証ユーザーID
-        supabase: Supabaseクライアント
+        auth_token: 認証トークン
 
     Raises:
         HTTPException: 会社が存在しない場合や削除エラー
     """
     try:
+        # トークン付きSupabaseクライアントを取得
+        supabase = await get_supabase_client(token=auth_token)
+
         # 会社が存在するかチェック
         existing = supabase.table("companies").select("id").eq("user_id", user_id).execute()
 

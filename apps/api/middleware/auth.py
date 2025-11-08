@@ -65,5 +65,21 @@ async def get_current_user_id(
         )
 
 
+async def get_auth_token(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+) -> str:
+    """
+    認証トークンを取得
+
+    Args:
+        credentials: Bearer トークン
+
+    Returns:
+        str: JWTトークン
+    """
+    return credentials.credentials
+
+
 # 依存性注入用の型エイリアス
 CurrentUserId = Annotated[str, Depends(get_current_user_id)]
+CurrentAuthToken = Annotated[str, Depends(get_auth_token)]
