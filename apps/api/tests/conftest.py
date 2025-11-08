@@ -122,6 +122,7 @@ def mock_company_data(test_user_id: str) -> dict:
         "name": "テスト株式会社",
         "description": "テスト用の会社です。",
         "business_types": ["システム開発", "コンサルティング"],
+        "skills": ["Python", "FastAPI", "React", "TypeScript", "PostgreSQL"],
         "regions": ["東京都", "神奈川県"],
         "budget_min": 5000000,
         "budget_max": 50000000,

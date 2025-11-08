@@ -56,7 +56,7 @@ const config: Config = {
 
   // transformIgnorePatternsの設定（node_modulesを変換対象に）
   transformIgnorePatterns: [
-    'node_modules/(?!(react-hook-form|swr)/)',
+    'node_modules/(?!(react-hook-form|swr|react-markdown|remark-gfm)/)',
   ],
 };
 

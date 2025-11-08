@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, MapPin, DollarSign, ExternalLink, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, DollarSign, ExternalLink, FileText, Loader2, AlertCircle, FileEdit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -103,7 +103,15 @@ export default function RfpDetailPage({ params }: RfpDetailPageProps) {
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <CardTitle className="text-2xl flex-1">{rfp.title}</CardTitle>
-                  <BookmarkButton rfpId={rfp.id} size="default" variant="outline" />
+                  <div className="flex items-center gap-2">
+                    <Button variant="default" asChild>
+                      <Link href={`/rfps/${rfp.id}/proposal`} className="flex items-center gap-2">
+                        <FileEdit className="h-4 w-4" />
+                        提案ドラフト生成
+                      </Link>
+                    </Button>
+                    <BookmarkButton rfpId={rfp.id} size="default" variant="outline" />
+                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="text-muted-foreground">{rfp.issuing_org}</p>

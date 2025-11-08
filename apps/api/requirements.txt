@@ -6,3 +6,4 @@ pandas
 pydantic-settings
 openai>=1.0.0
 httpx>=0.25.0
+jinja2>=3.1.0
