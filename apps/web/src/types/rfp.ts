@@ -73,13 +73,15 @@ export interface RFPListResponse {
  */
 export interface MatchingFactors {
   /** スキルマッチ度（0.0-1.0） */
-  skill_match: number;
-  /** 地域係数（0.8 or 1.0） */
-  region_coefficient: number;
-  /** 予算マッチ度加算（0-10%） */
-  budget_boost: number;
-  /** 納期加算（0-5%） */
-  deadline_boost: number;
+  skill: number;
+  /** 地域係数（0.0-1.0） */
+  region: number;
+  /** 予算マッチ度（0.0-1.0） */
+  budget: number;
+  /** 納期マッチ度（0.0-1.0） */
+  deadline: number;
+  /** 必須要件を満たすか */
+  must: boolean;
 }
 
 /**

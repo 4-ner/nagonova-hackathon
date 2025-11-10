@@ -50,17 +50,17 @@ async def get_user_company_id(
         str: 会社ID
 
     Raises:
-        HTTPException: ユーザーが見つからない場合
+        HTTPException: 会社が見つからない場合
     """
-    user_response = supabase.table("users").select("company_id").eq("id", user_id).execute()
+    company_response = supabase.table("companies").select("id").eq("user_id", user_id).execute()
 
-    if not user_response.data:
+    if not company_response.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="ユーザーが見つかりません",
+            detail="会社情報が見つかりません",
         )
 
-    return user_response.data[0]["company_id"]
+    return company_response.data[0]["id"]
 
 
 @router.get(

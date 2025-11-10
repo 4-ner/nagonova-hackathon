@@ -102,28 +102,28 @@ export function MatchScore({
               <div className="flex justify-between">
                 <span>スキルマッチ度:</span>
                 <span className="font-mono">
-                  {(rfp.match_factors.skill_match * 100).toFixed(0)}%
+                  {(rfp.match_factors.skill * 100).toFixed(0)}%
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>地域係数:</span>
+                <span>地域マッチ度:</span>
                 <span className="font-mono">
-                  ×{rfp.match_factors.region_coefficient.toFixed(1)}
+                  {(rfp.match_factors.region * 100).toFixed(0)}%
                 </span>
               </div>
-              {rfp.match_factors.budget_boost > 0 && (
+              {rfp.match_factors.budget > 0 && (
                 <div className="flex justify-between">
-                  <span>予算ボーナス:</span>
+                  <span>予算マッチ度:</span>
                   <span className="font-mono text-green-600">
-                    +{(rfp.match_factors.budget_boost * 100).toFixed(0)}%
+                    {(rfp.match_factors.budget * 100).toFixed(0)}%
                   </span>
                 </div>
               )}
-              {rfp.match_factors.deadline_boost > 0 && (
+              {rfp.match_factors.deadline > 0 && (
                 <div className="flex justify-between">
-                  <span>納期ボーナス:</span>
+                  <span>納期マッチ度:</span>
                   <span className="font-mono text-blue-600">
-                    +{(rfp.match_factors.deadline_boost * 100).toFixed(0)}%
+                    {(rfp.match_factors.deadline * 100).toFixed(0)}%
                   </span>
                 </div>
               )}

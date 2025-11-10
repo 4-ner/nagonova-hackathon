@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Background
 from fastapi.responses import PlainTextResponse
 from supabase import Client
 
-from database import get_supabase_client
+from database import get_supabase_client, get_service_supabase_client
 from middleware.auth import CurrentUserId, CurrentAuthToken
 from schemas.rfp import (
     RFPResponse,
@@ -232,23 +232,6 @@ async def get_rfps_with_matching(
         # トークン付きSupabaseクライアントを取得
         supabase = await get_supabase_client(token=auth_token)
 
-        # ユーザーの会社情報を取得
-        company_response = (
-            supabase.table("companies")
-            .select("id")
-            .eq("user_id", user_id)
-            .maybe_single()
-            .execute()
-        )
-
-        if not company_response.data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="会社情報が見つかりません。先にプロフィールを登録してください。",
-            )
-
-        company_id = company_response.data["id"]
-
         # オフセット計算
         offset = (page - 1) * page_size
 
@@ -257,13 +240,13 @@ async def get_rfps_with_matching(
             supabase.table("match_snapshots")
             .select(
                 """
-                match_score,
-                must_requirements_ok,
-                budget_match_ok,
-                region_match_ok,
-                match_factors,
+                score,
+                must_ok,
+                budget_ok,
+                region_ok,
+                factors,
                 summary_points,
-                updated_at,
+                created_at,
                 rfps:rfp_id (
                     id,
                     external_id,
@@ -275,7 +258,6 @@ async def get_rfps_with_matching(
                     deadline,
                     url,
                     external_doc_urls,
-                    has_embedding,
                     created_at,
                     updated_at,
                     fetched_at,
@@ -292,15 +274,15 @@ async def get_rfps_with_matching(
             """,
                 count="exact",
             )
-            .eq("company_id", company_id)
+            .eq("user_id", user_id)
         )
 
         # フィルタリング条件を適用
         if min_score is not None:
-            query_builder = query_builder.gte("match_score", min_score)
+            query_builder = query_builder.gte("score", min_score)
 
         if must_requirements_only:
-            query_builder = query_builder.eq("must_requirements_ok", True)
+            query_builder = query_builder.eq("must_ok", True)
 
         # 締切日フィルタ（指定日数以内に締切がある案件のみ）
         if deadline_days is not None:
@@ -320,7 +302,7 @@ async def get_rfps_with_matching(
             query_builder = query_builder.lte("rfps.budget", budget_max)
 
         # スコア降順でソート
-        query_builder = query_builder.order("match_score", desc=True)
+        query_builder = query_builder.order("score", desc=True)
 
         # ページネーション
         query_builder = query_builder.range(offset, offset + page_size - 1)
@@ -364,20 +346,20 @@ async def get_rfps_with_matching(
                 city_code=rfp_data.get("city_code"),
                 certification=rfp_data.get("certification"),
                 # マッチング情報
-                match_score=record["match_score"],
-                must_requirements_ok=record["must_requirements_ok"],
-                budget_match_ok=record["budget_match_ok"],
-                region_match_ok=record["region_match_ok"],
-                match_factors=record["match_factors"],
+                match_score=record["score"],
+                must_requirements_ok=record["must_ok"],
+                budget_match_ok=record["budget_ok"],
+                region_match_ok=record["region_ok"],
+                match_factors=record["factors"],
                 summary_points=record.get("summary_points", []),
-                match_calculated_at=record["updated_at"],
+                match_calculated_at=record["created_at"],
             )
             items.append(item)
 
         total = response.count if response.count is not None else 0
 
         logger.info(
-            f"マッチングスコア付きRFP一覧を取得しました: user_id={user_id}, company_id={company_id}, "
+            f"マッチングスコア付きRFP一覧を取得しました: user_id={user_id}, "
             f"total={total}, page={page}, page_size={page_size}, "
             f"min_score={min_score}, must_requirements_only={must_requirements_only}, "
             f"deadline_days={deadline_days}, budget_min={budget_min}, budget_max={budget_max}"
@@ -402,46 +384,77 @@ async def get_rfps_with_matching(
 
 @router.get(
     "/rfps/{rfp_id}",
-    response_model=RFPResponse,
+    response_model=RFPWithMatchingResponse,
     summary="RFP詳細を取得",
-    description="認証されたユーザーが指定されたRFPの詳細情報を取得します。",
+    description="認証されたユーザーが指定されたRFPの詳細情報を取得します。マッチングスナップショットがあれば含めて返します。",
 )
 async def get_rfp(
     rfp_id: str,
     user_id: CurrentUserId,
-    supabase: Annotated[Client, Depends(get_supabase_client)],
-) -> RFPResponse:
+    supabase: Annotated[Client, Depends(get_service_supabase_client)],
+) -> RFPWithMatchingResponse:
     """
-    RFP詳細取得
+    RFP詳細取得（マッチング情報付き）
 
     Args:
         rfp_id: RFP UUID
         user_id: 認証ユーザーID
-        supabase: Supabaseクライアント
+        supabase: Supabaseサービスクライアント
 
     Returns:
-        RFPResponse: RFP詳細情報
+        RFPWithMatchingResponse: RFP詳細情報（マッチング情報を含む）
 
     Raises:
         HTTPException: RFPが存在しない場合や取得エラー
     """
     try:
-        response = supabase.table("rfps").select("*").eq("id", rfp_id).execute()
+        # RFP基本情報を取得（Service Roleクライアント使用）
+        rfp_response = supabase.table("rfps").select("*").eq("id", rfp_id).execute()
 
-        if not response.data:
+        if not rfp_response.data:
             logger.info(f"RFPが見つかりません: rfp_id={rfp_id}, user_id={user_id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="RFPが見つかりません",
             )
 
-        rfp = response.data[0]
-        # has_embeddingフィールドを追加
-        rfp_data = {**rfp, "has_embedding": rfp.get("embedding") is not None}
+        rfp = rfp_response.data[0]
 
-        logger.debug(f"RFP詳細を取得しました: rfp_id={rfp_id}, user_id={user_id}")
+        # マッチングスナップショットを取得
+        match_response = (
+            supabase.table("match_snapshots")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("rfp_id", rfp_id)
+            .maybe_single()
+            .execute()
+        )
 
-        return RFPResponse(**rfp_data)
+        # RFPデータにhas_embeddingを追加
+        rfp_data = {
+            **rfp,
+            "has_embedding": rfp.get("embedding") is not None,
+        }
+
+        # マッチング情報があれば追加
+        if match_response.data:
+            match = match_response.data
+            rfp_data.update({
+                "match_score": match["score"],
+                "must_requirements_ok": match["must_ok"],
+                "budget_match_ok": match["budget_ok"],
+                "region_match_ok": match["region_ok"],
+                "match_factors": match["factors"],
+                "summary_points": match.get("summary_points", []),
+                "match_calculated_at": match["created_at"],
+            })
+
+        logger.debug(
+            f"RFP詳細を取得しました: rfp_id={rfp_id}, user_id={user_id}, "
+            f"has_matching={match_response.data is not None}"
+        )
+
+        return RFPWithMatchingResponse(**rfp_data)
 
     except HTTPException:
         raise
@@ -516,7 +529,7 @@ async def ingest_rfps_from_kkj(
 async def generate_proposal_draft(
     rfp_id: str,
     user_id: CurrentUserId,
-    supabase: Annotated[Client, Depends(get_supabase_client)],
+    supabase: Annotated[Client, Depends(get_service_supabase_client)],
 ) -> str:
     """
     提案書ドラフト生成
@@ -528,7 +541,7 @@ async def generate_proposal_draft(
     Args:
         rfp_id: RFP UUID
         user_id: 認証ユーザーID
-        supabase: Supabaseクライアント
+        supabase: Supabaseサービスクライアント
 
     Returns:
         str: 提案書ドラフトのMarkdown文字列
@@ -577,17 +590,17 @@ async def generate_proposal_draft(
 
         match_response = (
             supabase.table("match_snapshots")
-            .select("match_score, summary_points")
-            .eq("company_id", company["id"])
+            .select("score, summary_points")
+            .eq("user_id", user_id)
             .eq("rfp_id", rfp_id)
-            .order("updated_at", desc=True)
+            .order("created_at", desc=True)
             .limit(1)
             .execute()
         )
 
         if match_response.data and len(match_response.data) > 0:
             match_data = match_response.data[0]
-            match_score = match_data.get("match_score")
+            match_score = match_data.get("score")
             summary_points = match_data.get("summary_points", [])
 
         # ProposalGeneratorを初期化して提案書を生成
